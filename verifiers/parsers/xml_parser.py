@@ -3,7 +3,10 @@ from typing import List, Dict, Any, Union, Tuple, Optional, Callable
 from types import SimpleNamespace
 
 class XMLParser:
-    def __init__(self, fields: List[Union[str, Tuple[str, ...]]]):
+    def __init__(self, 
+                 fields: List[Union[str, Tuple[str, ...]]], 
+                 xml_reward_weight: float = 0.2,
+                 format_reward_weight: float = 0.2):
         """
         Initialize the parser with field definitions.
         
@@ -17,6 +20,8 @@ class XMLParser:
         """
         self._fields: List[Tuple[str, List[str]]] = []  # List of (canonical, [alternatives])
         seen = set()
+        self.xml_reward_weight = xml_reward_weight
+        self.format_reward_weight = format_reward_weight
         for field in fields:
             if isinstance(field, str):
                 canonical = field
@@ -84,7 +89,7 @@ class XMLParser:
                 # Return average XML score across all messages
                 if not xml_scores:
                     return 0.0
-                return 0.2 * (sum(xml_scores) / len(xml_scores))  # 0.2 weight as in both rubrics
+                return self.xml_reward_weight * (sum(xml_scores) / len(xml_scores))  # 0.2 weight as in both rubrics
             
             # Apply the XML check to each completion trajectory
             return [count_xml(c) for c in completions]
@@ -173,9 +178,10 @@ class XMLParser:
                         # Calculate the proportion of expected field sets that are present
                         field_set_ratio = len(present_field_sets) / expected_field_count
                         format_score += 0.4 * field_set_ratio
+
+                        if has_correct_spacing:
+                            format_score += 0.2
                     
-                    if has_correct_spacing:
-                        format_score += 0.2
                     
                     if starts_with_any_field:
                         format_score += 0.2
@@ -188,7 +194,7 @@ class XMLParser:
                 # Return average format adherence
                 if not format_scores:
                     return 0.0
-                return 0.2 * (sum(format_scores) / len(format_scores))  # 0.2 weight as in both rubrics
+                return self.format_reward_weight * (sum(format_scores) / len(format_scores))  # 0.2 weight as in both rubrics
             
             # Apply the format check to each completion trajectory
             return [check_format(c) for c in completions]

@@ -31,3 +31,4 @@ logs/
 # WIPs
 wip/
 notebooks/
+log_error_state/

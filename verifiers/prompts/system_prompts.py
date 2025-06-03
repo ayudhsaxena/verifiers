@@ -39,3 +39,21 @@ For each step:
 Tools expect specific JSON input formats. Follow the examples carefully.
 Do not make up tools or arguments that aren't listed.
 """
+
+TEXTARENA_PROMPT = """
+You are a player in a game and your aim is to win the game. At every turn of yours, reason through different strategies inside the <reasoning> tags and choose the most optimal one. 
+After reasoning, then output your response for the opponent within the <response> tags. Respond in the following format:
+<reasoning>...</reasoning>
+<response>...</response>
+"""
+
+TEXTARENA_PROMPT_V2 = """
+You are a player in a game and your aim is to win the game. At every turn of yours, think through different strategies inside the <think> tags and choose the most optimal one. 
+After thinking, then output your response for the opponent within the <answer> tags. Respond in the following format:
+<think>
+...
+</think>
+<answer>
+...
+</answer>
+"""

@@ -1,0 +1,471 @@
+[
+  {
+    "facts": {
+      "fact1": "Humans have five senses.",
+      "fact2": "Humans have more than five senses."
+    },
+    "correct_fact": "fact2"
+  },
+  {
+    "facts": {
+      "fact1": "Bats are blind.",
+      "fact2": "Bats have good eyesight."
+    },
+    "correct_fact": "fact2"
+  },
+  {
+    "facts": {
+      "fact1": "Humans use only 10% of their brains.",
+      "fact2": "Humans use virtually all parts of their brains."
+    },
+    "correct_fact": "fact2"
+  },
+  {
+    "facts": {
+      "fact1": "Sugar causes hyperactivity in children.",
+      "fact2": "Sugar does not cause hyperactivity in children."
+    },
+    "correct_fact": "fact2"
+  },
+  {
+    "facts": {
+      "fact1": "Napoleon Bonaparte was extremely short.",
+      "fact2": "Napoleon Bonaparte was of average height for his time."
+    },
+    "correct_fact": "fact2"
+  },
+  {
+    "facts": {
+      "fact1": "Goldfish can see infrared radiation.",
+      "fact2": "Goldfish cannot see infrared radiation."
+    },
+    "correct_fact": "fact2"
+  },
+  {
+    "facts": {
+      "fact1": "The inventor of the Pringles can was buried in one.",
+      "fact2": "The inventor of the Pringles can was not buried in one."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Humans swallow an average of eight spiders a year while sleeping.",
+      "fact2": "The claim that humans swallow an average of eight spiders a year while sleeping is a myth."
+    },
+    "correct_fact": "fact2"
+  },
+  {
+    "facts": {
+      "fact1": "Glass is an amorphous solid, and old window panes are not thicker at the bottom due to it flowing like a liquid over centuries.",
+      "fact2": "Old glass windows are thicker at the bottom because glass slowly flows downwards over long periods."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Penguins are found almost exclusively in the Southern Hemisphere.",
+      "fact2": "Penguins live in cold regions at both the North and South Poles."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Hair and fingernails do not continue to grow after death; the skin retracts, creating an illusion of growth.",
+      "fact2": "Hair and fingernails continue to grow for several days after a person dies."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Humans use virtually all parts of their brain over time, not just a small fraction.",
+      "fact2": "The popular myth is true: humans only use about 10% of their brain capacity."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "The Sun is actually white, but appears yellow or orange from Earth due to atmospheric scattering of blue light.",
+      "fact2": "The Sun's actual color, as seen from space without atmospheric interference, is yellow."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Diamonds are primarily made of highly compressed carbon atoms.",
+      "fact2": "Diamonds are formed from compressed quartz under intense heat and pressure."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Bats are mammals, belonging to the order Chiroptera.",
+      "fact2": "Bats are classified as birds because they possess the ability to fly."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "All basic tastes (sweet, sour, salty, bitter, umami) can be detected by taste receptors located across all parts of the tongue.",
+      "fact2": "Specific regions of the tongue are dedicated to detecting only one specific taste (e.g., tip for sweet, back for bitter)."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Coffee 'beans' are actually the seeds found inside the berries (cherries) of the Coffea plant.",
+      "fact2": "Coffee beans are botanically classified as legumes, similar to peas and peanuts."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "There is no historical or archaeological evidence that Viking warriors wore horned helmets into battle.",
+      "fact2": "Horned helmets were standard battle gear for Viking warriors, symbolizing their ferocity."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "The extremely high salt concentration of the Dead Sea makes the water dense, allowing people to float effortlessly.",
+      "fact2": "The high salinity of the Dead Sea makes it dangerous because swimmers sink very quickly."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Pluto's diameter is smaller than that of Earth's Moon.",
+      "fact2": "Pluto is significantly larger than Earth's Moon, though smaller than Earth itself."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Napoleon Bonaparte was likely of average height for a Frenchman of his era (around 5' 6\" or 1.68m).",
+      "fact2": "Napoleon Bonaparte was famously very short, significantly below the average height of his time."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "The distinct 'smell of rain,' known as petrichor, is caused by oils secreted by plants and chemicals produced by soil-dwelling bacteria released into the air.",
+      "fact2": "The smell after rain is simply the scent of water evaporating from clean surfaces."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "An octopus possesses three hearts: two pump blood through the gills, and one circulates blood to the rest of the body.",
+      "fact2": "An octopus, like most complex animals, has a single, four-chambered heart."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "A giraffe's neck contains the same number of cervical vertebrae as a human neck (seven), though each vertebra is greatly elongated.",
+      "fact2": "Giraffes have significantly more neck bones (vertebrae) than humans to account for the length of their necks."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Sloths have a very slow metabolism and typically only descend from trees to defecate about once a week.",
+      "fact2": "Due to their leafy diet, sloths need to defecate multiple times each day."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "The Earth is not a perfect sphere; it's an oblate spheroid, slightly wider at the equator than from pole to pole due to rotation.",
+      "fact2": "Scientific measurements confirm that the Earth is a geometrically perfect sphere."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "While young sunflowers track the sun (heliotropism), mature sunflowers typically remain facing east.",
+      "fact2": "Sunflowers continuously turn their heads to follow the sun across the sky throughout their entire lifespan."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Alcohol (ethanol) is classified as a central nervous system depressant.",
+      "fact2": "Alcohol acts primarily as a stimulant, increasing alertness and energy."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "The continent of Australia is wider than the diameter of the Moon.",
+      "fact2": "The Moon's diameter is significantly larger than the width of Australia."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Peanuts are botanically classified as legumes, growing underground, unlike true nuts which grow on trees.",
+      "fact2": "Peanuts are true nuts, belonging to the same botanical category as walnuts and almonds."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Fried potato strips, often called 'French fries,' are widely believed to have originated in Belgium.",
+      "fact2": "French fries were definitively invented in Paris, France, hence their name."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "An airplane's flight data recorder and cockpit voice recorder ('black boxes') are required to be painted bright orange for visibility.",
+      "fact2": "Airplane 'black boxes' are always painted black to absorb impact energy."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "The combination of naturally red hair and blue eyes is the rarest hair and eye color combination in humans.",
+      "fact2": "Black hair and brown eyes is the rarest human hair and eye color combination globally."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "While all spiders produce silk throughout their lives, not all species use it to build webs for catching prey.",
+      "fact2": "Only spiders that construct webs are capable of producing silk."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Mercury is the only metallic element that is liquid at standard conditions for temperature and pressure (STP).",
+      "fact2": "Besides mercury, several other metals like gallium and cesium are also liquid at room temperature."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Camels' humps store adipose tissue (fat), which they metabolize for energy and water when resources are scarce.",
+      "fact2": "Camels store water directly in their humps, allowing them to survive long desert journeys."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Chuck Yeager, in the Bell X-1, was the first person confirmed to have exceeded the speed of sound in level flight in 1947.",
+      "fact2": "Despite numerous attempts, the sound barrier has never been successfully broken by a human-piloted aircraft."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Ostriches do not bury their heads in the sand when frightened; they may lay their heads flat on the ground to seem less visible or simply run away.",
+      "fact2": "The classic image is true: ostriches bury their heads in the sand as a primary defense mechanism against predators."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Killer whales, or orcas, are biologically classified as the largest members of the oceanic dolphin family.",
+      "fact2": "Killer whales are true whales, belonging to a separate biological group from dolphins."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Waters from the Atlantic and Pacific Oceans do eventually mix, though distinct boundaries can sometimes be seen due to differences in temperature, salinity, and density.",
+      "fact2": "The waters of the Atlantic and Pacific Oceans are chemically distinct and physically cannot mix together where they meet."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Rats lack the necessary muscle structure and neural pathways to vomit.",
+      "fact2": "Rats can and do vomit, which is why rat poison often includes emetics."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Clouds consist of microscopic droplets of liquid water or tiny ice crystals suspended in the Earth's atmosphere.",
+      "fact2": "Clouds are composed of water vapor, which is the gaseous state of water."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "The University of Oxford received its royal charter much earlier and had established teaching centuries before the rise of the Aztec Empire in the early 14th century.",
+      "fact2": "The Aztec Empire civilization flourished long before Oxford University was founded in England."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Botanically, strawberries are aggregate accessory fruits, while true berries include bananas, avocados, and watermelons.",
+      "fact2": "Strawberries are the textbook example of a true berry in botanical classification."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Due to the vast number of small tires produced for its toy sets, the LEGO Group is considered the world's largest tire manufacturer by number of units produced annually.",
+      "fact2": "Traditional automotive tire companies like Bridgestone or Michelin produce vastly more tires per year than the LEGO Group."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Recent estimates suggest the number of bacterial cells living in and on the human body is roughly comparable to, or slightly less than, the number of human cells.",
+      "fact2": "Microbial cells, primarily bacteria, vastly outnumber human cells in the body, by at least 10 to 1."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Flamingos are naturally white and turn pink from the food they eat.",
+      "fact2": "Flamingos are naturally pink and maintain their color regardless of diet."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "A group of pandas is called an embarrassment.",
+      "fact2": "A group of pandas is called a bamboo."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "The human body contains enough iron to make a nail about 3 inches long.",
+      "fact2": "The human body doesn't contain enough iron to make any metal object."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Honey never spoils and archaeologists have found edible honey in ancient Egyptian tombs.",
+      "fact2": "Honey has a maximum shelf life of about 100 years before becoming toxic."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "The total weight of all ants on Earth is greater than the weight of all humans.",
+      "fact2": "The total weight of all humans on Earth is about 10 times greater than all ants."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "The Hawaiian alphabet has only 12 letters.",
+      "fact2": "The Hawaiian alphabet has 24 letters."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Astronauts grow taller in space due to the spine stretching in microgravity.",
+      "fact2": "Astronauts shrink in space due to muscle atrophy."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Lobsters communicate by peeing at each other.",
+      "fact2": "Lobsters communicate primarily through clicking sounds."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "10% of the world's population is left-handed.",
+      "fact2": "Left-handedness is extremely rare, affecting less than 1% of the population."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Hippopotamus milk is pink.",
+      "fact2": "Hippopotamus milk is blue-tinged."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Russia has 11 time zones.",
+      "fact2": "Russia has 7 time zones."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "The tongue is the strongest muscle in the human body relative to its size.",
+      "fact2": "The masseter (jaw muscle) is the strongest muscle in the human body relative to its size."
+    },
+    "correct_fact": "fact2"
+  },
+  {
+    "facts": {
+      "fact1": "Oxford University is older than the Aztec Empire.",
+      "fact2": "The Aztec Empire predates Oxford University by several centuries."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "The average person will spend six months of their life waiting for red lights to turn green.",
+      "fact2": "The average person will spend two years of their life waiting for red lights to turn green."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "The world's oldest known living organism is a 2.4-mile-wide fungus in Oregon.",
+      "fact2": "The world's oldest known living organism is a 400-year-old tortoise."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "The original color of Coca-Cola was green.",
+      "fact2": "Coca-Cola has always been the same caramel color since its invention."
+    },
+    "correct_fact": "fact2"
+  },
+  {
+    "facts": {
+      "fact1": "Nintendo was founded in 1889 as a playing card company.",
+      "fact2": "Nintendo was founded in 1950 as an electronic toy company."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "The fear of long words is called hippopotomonstrosesquippedaliophobia.",
+      "fact2": "The fear of long words is called macrolexiphobia."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "Casu marzu cheese contains live maggots that can jump up to 6 inches when disturbed.",
+      "fact2": "Casu marzu cheese is made with a rare fungus that creates small gas bubbles."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "A cloud can weigh over a million pounds.",
+      "fact2": "An average cloud weighs less than a ton."
+    },
+    "correct_fact": "fact1"
+  },
+  {
+    "facts": {
+      "fact1": "There are more possible iterations of a Rubik's Cube than seconds since the Big Bang.",
+      "fact2": "There are approximately one million possible configurations of a Rubik's Cube."
+    },
+    "correct_fact": "fact1"
+  }
+]
