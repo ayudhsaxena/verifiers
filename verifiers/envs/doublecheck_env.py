@@ -1,43 +1,46 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
 from datasets import Dataset
-from trl.trainer.grpo_trainer import RewardFunc
-
-from verifiers.envs.multistep_env import MultiStepEnv
-from verifiers.prompts import SIMPLE_PROMPT, DOUBLECHECK_FEW_SHOT
+from openai import OpenAI
+from verifiers import RewardFunc
+from verifiers.envs.multiturn_env import MultiTurnEnv
+from verifiers.prompts import SIMPLE_PROMPT
 from verifiers.rubrics import MathRubric
-from verifiers.utils import preprocess_dataset
 
-
-class DoubleCheckEnv(MultiStepEnv):
-    def __init__(self, 
-                 dataset: str = "gsm8k",
+class DoubleCheckEnv(MultiTurnEnv):
+    def __init__(self,
+                 client: OpenAI | None = None,
+                 model: str | None = None,
+                 dataset: Dataset | None = None,
+                 eval_dataset: Dataset | None = None,
                  system_prompt: str = SIMPLE_PROMPT,
-                 few_shot: List[Dict[str, str]] = DOUBLECHECK_FEW_SHOT[0],
+                 few_shot: List[Dict[str, str]] = [],
                  **kwargs):
-        
-        sampling_args = {
-            "skip_special_tokens": False,
-            "spaces_between_special_tokens": False,
-        }
-        super().__init__(dataset=dataset, system_prompt=system_prompt, few_shot=few_shot, sampling_args=sampling_args, **kwargs)
-        self.dataset_name = dataset
-        self.dataset = preprocess_dataset(
-            dataset_name=dataset,
-            split="train",
+        super().__init__(
+            client=client,
+            model=model,
+            dataset=dataset,
+            eval_dataset=eval_dataset,
             system_prompt=system_prompt,
-            few_shot=few_shot
+            few_shot=few_shot,
+            **kwargs
         )
         self.rubric = MathRubric()
 
-    def get_rubric(self, **kwargs: Any) -> List[RewardFunc]:
+    def get_reward_funcs(self, **kwargs: Any) -> List[RewardFunc]:
         return self.rubric.get_reward_funcs()
     
-    def get_dataset(self, **kwargs: Any) -> Dataset:
-        return self.dataset
-    
-    def is_completed(self, messages: List[Dict[str, str]], **kwargs: Any) -> bool:
+    def get_reward_weights(self, **kwargs: Any) -> List[float]:
+        return self.rubric.get_reward_weights()
+
+    def is_completed(self,
+                     messages: List[Dict[str, str]],
+                     state: Dict[str, Any],
+                     **kwargs: Any) -> bool:
         return len(messages) > 1 and messages[-2]['content'] == 'Are you sure?'
     
-    def env_response(self, messages: List[Dict[str, str]], **kwargs: Any) -> Dict[str, str]:
-        return {'role': 'user', 'content': 'Are you sure?'}
+    def env_response(self,
+                     messages: List[Dict[str, str]],
+                     state: Dict[str, Any],
+                     **kwargs: Any) -> Tuple[Dict[str, str], Dict[str, Any]]:
+        return {'role': 'user', 'content': 'Are you sure?'}, state
