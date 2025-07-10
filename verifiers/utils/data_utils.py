@@ -39,7 +39,8 @@ def extract_hash_answer(text: str) -> str | None:
         return None
     return text.split("####")[1].strip()
 
-def get_preprocess_fn(name: str) -> Callable[[Dict], Dict]: 
+def get_preprocess_fn(name: str,
+                      env_id: str = None) -> Callable[[Dict], Dict]: 
     if name == "aime2024":
         def preprocess_aime2024(x: Dict[str, Any]) -> Dict[str, Any]:
             return {
@@ -172,13 +173,23 @@ def get_preprocess_fn(name: str) -> Callable[[Dict], Dict]:
                 "task": "code"
             }
         return preprocess_prime_code
+    elif name == "textarena":
+        def preprocess_textarena(x: Dict[str, Any]) -> Dict[str, Any]:
+            return {
+            "prompt": x["prompt"],
+            "metadata" : get_metadata(x, env_id),
+            'answer': '',
+        }
+        return preprocess_textarena
     else:
         raise ValueError(f"Dataset {name} not supported for preprocess_dataset.")
 
 def load_example_dataset(name: str = "gsm8k",
                          split: str | None = None,
                          n: int | None = None,
-                         seed: int = 0) -> Dataset:
+                         seed: int = 0,
+                         env_id: str = None,
+                         player_id: int = 0) -> Dataset:
     if name == "aime2024":
         if split is None:
             split = "train"
@@ -244,14 +255,46 @@ def load_example_dataset(name: str = "gsm8k",
             split = "train"
         dataset: Dataset = load_dataset("PrimeIntellect/verifiable-coding-problems")[split] # type: ignore
         dataset = dataset.filter(lambda x: x['prompt'].startswith("Solve the following coding problem using the programming language python:")) # type: ignore
+    elif name == "textarena":
+        if split is None:
+            split = "train"
+        if env_id == "TruthAndDeception-v0":
+            if split == "train":
+                dataset: Dataset = load_dataset("saintlyk1d/truthdeception-deceiver-prompts")["train"]
+            else:
+                dataset: Dataset = load_dataset("saintlyk1d/truthdeception-deceiver-prompts_6_turns_test_set")["train"]
+        elif env_id == "TruthAndDeception-v0-long":
+            dataset: Dataset = load_dataset("saintlyk1d/truthdeception-deceiver-prompts_12_turns")[split]
+        elif env_id == "DontSayIt-v0":
+            if player_id == 0:
+                if split == "train":
+                    dataset: Dataset = load_dataset("saintlyk1d/dont-say-it-prompts-player0-basic-variant-C")["train"]
+                else :
+                    dataset: Dataset = load_dataset("saintlyk1d/dont-say-it-prompts-player0-test-set-variant-C")["train"]
+            else:
+                if split == "train":
+                    dataset: Dataset = load_dataset("saintlyk1d/dont-say-it-prompts-player1-basic-variant-C")["train"]
+                else :
+                    dataset: Dataset = load_dataset("saintlyk1d/dont-say-it-prompts-player1-test-set-variant-C")["train"]
+        else:
+            raise ValueError(f"env_id {env_id} not supported for preprocess_dataset.")
     else:
         raise ValueError(f"Dataset {name} not supported for preprocess_dataset. \
 Please ensure that the dataset is formatted with 'prompt' (str) and 'answer' (str) keys.")
     
-    preprocess_fn = get_preprocess_fn(name)
+    preprocess_fn = get_preprocess_fn(name, env_id=env_id)
     if n is not None and n > 0:
         dataset = dataset.shuffle(seed=seed).select(range(n)) # type: ignore
     dataset = dataset.map(preprocess_fn, num_proc=10, remove_columns=dataset.column_names) # type: ignore
     if "temp_answer" in dataset.column_names:
         dataset = dataset.rename_column("temp_answer", "answer")
     return dataset
+
+
+def get_metadata(input: Dict, env_id: str) -> List[str]:
+    if env_id == "DontSayIt-v0":
+        return {
+            "opponent_word": input["opponent_word"],
+        }
+    else:
+        return {}

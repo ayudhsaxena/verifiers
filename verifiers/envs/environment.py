@@ -95,7 +95,7 @@ class Environment(ABC):
                        dataset: Dataset,
                        system_prompt: str | None = None,
                        few_shot: List[Dict[str, Any]] | None = None,
-                       question_key: str = "question",
+                       question_key: str = "prompt",
                        answer_key: str = "answer") -> Dataset:
         # Extract format_prompt as a standalone function to avoid capturing self
         def format_prompt_fn(prompt: str) -> List[Dict[str, Any]]:
@@ -235,10 +235,18 @@ class Environment(ABC):
         """
         from tqdm.asyncio import tqdm_asyncio
         semaphore = Semaphore(max_concurrent)
-        rollout_tasks = [
-            self._run_single(semaphore, client, model, prompt, sampling_args, **kwargs)
-            for prompt in prompts
-        ]
+        metadata = kwargs.get('metadata', {})
+        if metadata:
+            kwargs = {k: v for k, v in kwargs.items() if k != 'metadata'}
+            rollout_tasks = [
+                self._run_single(semaphore, client, model, prompt, sampling_args, metadata = md, **kwargs)
+                for prompt, md in zip(prompts, metadata)
+            ]
+        else:
+            rollout_tasks = [
+                self._run_single(semaphore, client, model, prompt, sampling_args, **kwargs)
+                for prompt in prompts
+            ]
         return await tqdm_asyncio.gather(
             *rollout_tasks,
             total=len(prompts),
@@ -292,18 +300,22 @@ class Environment(ABC):
         if max_concurrent is None:
             max_concurrent = self.max_concurrent
 
+        
+
         # run rollouts    
         if isinstance(inputs, Dataset):
             # get prompt column
             results = {col: deepcopy(inputs[col]) for col in inputs.column_names}
         else:
             results = deepcopy(inputs)
+        metadata = results.get('metadata', {})
         rollouts = self.run_rollouts(
             prompts=results['prompt'],
             client=client,
             model=model,
             sampling_args=gen_sampling_args,
             max_concurrent=max_concurrent,
+            metadata=metadata,
             **kwargs
         )
         results['completion'] = [rollout[0] for rollout in rollouts]
@@ -319,7 +331,7 @@ class Environment(ABC):
                 tasks=results['task'],
                 max_concurrent=max_concurrent,
                 apply_weights=True
-            )       
+            )
             results.update(results_rewards)
         return results
     
@@ -342,7 +354,7 @@ class Environment(ABC):
             prompt_ids, prompt_mask, completion_ids, completion_mask
         """
         # tokenize just the prompt
-        prompt_text = processing_class.apply_chat_template(prompt, tokenize=False, add_generation_prompt=True)
+        prompt_text = processing_class.apply_chat_template(prompt, tokenize=False, add_generation_prompt=False)
         assert isinstance(prompt_text, str)
         prompt_ids = processing_class.encode(prompt_text)
         prompt_mask = [1] * len(prompt_ids)
@@ -358,7 +370,6 @@ class Environment(ABC):
         for i, msg in enumerate(completion):
             # create conversation prefix: prompt + completion[:i+1]
             conversation_prefix = prompt + completion[:i+1]
-            
             # tokenize the full prefix
             prefix_text = processing_class.apply_chat_template(
                 conversation_prefix, 
@@ -471,6 +482,7 @@ class Environment(ABC):
             "completion_ids": all_completion_ids,
             "completion_mask": all_completion_masks,
             "rewards": rewards,
+            'states': states,
         }
 
     # Evaluation and dataset generation
@@ -503,7 +515,7 @@ class Environment(ABC):
             inputs = inputs.select(range(num_samples))
 
         results = self.generate(
-            inputs, client, model, sampling_args, max_concurrent, **kwargs
+            inputs, client, model, sampling_args, max_concurrent, mode="eval", **kwargs
         )
         return results
 

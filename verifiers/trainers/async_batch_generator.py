@@ -52,7 +52,7 @@ class AsyncBatchGenerator:
         sampling_args: Dict[str, Any],
         num_batches_ahead: int = 1,
         max_queue_size: Optional[int] = None,
-        generation_timeout: float = 300.0,  # 5 minutes default
+        generation_timeout: float = 600.0,  # 5 minutes default
     ):
         self.env = env
         self.client = client
@@ -230,6 +230,7 @@ class AsyncBatchGenerator:
             max_concurrent=request.max_concurrent,
         )
         
+        # only the rank-0 worker continues; others return an empty result
         # Extract all reward-related keys
         all_reward_dict = {}
         reward_keys = [k for k in env_results.keys() if k.endswith('_func') or k == 'reward']

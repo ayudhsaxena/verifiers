@@ -10,7 +10,7 @@ import openai
 import torch
 from torch.utils.data import DataLoader, Sampler
 from accelerate.utils import broadcast_object_list, gather_object, is_peft_model
-from peft import PeftConfig, get_peft_model
+from peft import PeftConfig, get_peft_model # type: ignore
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
@@ -19,9 +19,9 @@ from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.trainer import Trainer
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import seed_worker
-from trl.models import create_reference_model, prepare_deepspeed
-from trl.trainer.callbacks import SyncRefModelCallback
-from trl.trainer.utils import (
+from trl.models import create_reference_model, prepare_deepspeed # type: ignore
+from trl.trainer.callbacks import SyncRefModelCallback # type: ignore
+from trl.trainer.utils import ( # type: ignore
     disable_dropout_in_model,
     pad,
     selective_log_softmax
@@ -29,7 +29,7 @@ from trl.trainer.utils import (
 import wandb
 import numpy as np
 
-from verifiers import Environment
+from verifiers import Environment # type: ignore
 from verifiers.inference import VLLMClient
 from verifiers.trainers.grpo_config import GRPOConfig
 from verifiers.trainers.async_batch_generator import AsyncBatchGenerator, BatchRequest
@@ -232,7 +232,7 @@ class GRPOTrainer(Trainer):
             data_collator=data_collator,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            processing_class=processing_class,
+            processing_class=processing_class, # type: ignore
             callbacks=callbacks,
             optimizers=optimizers,
         )
@@ -277,6 +277,7 @@ class GRPOTrainer(Trainer):
             "prompt": deque(maxlen=maxlen),
             "completion": deque(maxlen=maxlen),
             "rewards": defaultdict(lambda: deque(maxlen=maxlen)),
+            "judge_logging_data": deque(maxlen=maxlen),
         }
  
         # OpenAI client for Environment generation (using vLLM server)
@@ -475,7 +476,7 @@ class GRPOTrainer(Trainer):
         deepspeed_plugin = self.accelerator.state.deepspeed_plugin
         zero_stage_3 = deepspeed_plugin is not None and deepspeed_plugin.zero_stage == 3
         if zero_stage_3:
-            import deepspeed
+            import deepspeed # type: ignore
             gather_if_zero3 = deepspeed.zero.GatheredParameters
         else:
             gather_if_zero3 = nullcontext
@@ -586,12 +587,14 @@ class GRPOTrainer(Trainer):
         prompts = [x['prompt'] for x in batch]
         answers = [x['answer'] for x in batch]
         tasks = [x.get('task', 'default') for x in batch]
+        metadata = [x.get('metadata', {}) for x in batch]
         
         all_prompts = gather_object(prompts)
         all_answers = gather_object(answers)
         all_tasks = gather_object(tasks)
+        all_metadata = gather_object(metadata)
          
-        return all_prompts, all_answers, all_tasks
+        return all_prompts, all_answers, all_tasks, all_metadata # type: ignore
 
     def _prepare_inputs( # type: ignore
         self, inputs: list[dict[str, Any]]
@@ -638,7 +641,7 @@ class GRPOTrainer(Trainer):
             
             for batch_id in range(self._next_batch_id, target_batch_id + 1):
                 batch_offset = batch_id - batch_id_to_retrieve
-                all_prompts, all_answers, all_tasks = self._gather_batch_data(batch_offset)
+                all_prompts, all_answers, all_tasks, all_metadata = self._gather_batch_data(batch_offset) # type: ignore
                 
                 local_batch_size = len(all_prompts) // self.accelerator.num_processes
                 
@@ -646,8 +649,8 @@ class GRPOTrainer(Trainer):
                 if self.accelerator.is_main_process:
                     request = BatchRequest(
                         batch_id=batch_id,
-                        env_inputs={'prompt': all_prompts, 'answer': all_answers, 'task': all_tasks},
-                        processing_class=self.processing_class,
+                        env_inputs={'prompt': all_prompts, 'answer': all_answers, 'task': all_tasks, 'metadata': all_metadata},
+                        processing_class=self.processing_class, # type: ignore  
                         mask_env_responses=self.mask_env_responses,
                         max_completion_length=self.max_completion_length,
                         mask_truncated_completions=self.mask_truncated_completions,
@@ -693,6 +696,7 @@ class GRPOTrainer(Trainer):
                     'all_reward_dict': batch_result.all_reward_dict if hasattr(batch_result, 'all_reward_dict') else {'reward': processed_results['rewards']},
                     'completions': batch_result.completions if hasattr(batch_result, 'completions') else [],
                     'prompts': batch_result.prompts if hasattr(batch_result, 'prompts') else [],
+                    'states': processed_results.get('states', []),
                 }
             else:
                 broadcast_data = None
@@ -757,7 +761,8 @@ class GRPOTrainer(Trainer):
                 self._log_textual_data_primary(
                     all_prompts=broadcast_data['prompts'],
                     all_completions=broadcast_data['completions'],
-                    all_reward_dict=broadcast_data['all_reward_dict']
+                    all_reward_dict=broadcast_data['all_reward_dict'],
+                    all_states= broadcast_data['states'],
                 )
                 
                 # Log completion metrics using full batch data on CPU to save memory
@@ -916,12 +921,13 @@ class GRPOTrainer(Trainer):
         
         # Log individual reward function scores
         for key in eval_results:
-            if key.startswith('reward_') and key != 'reward':
+            if key != 'reward' and key.endswith('_func'):  # Include all keys except the consolidated 'reward' key
                 reward_values = eval_results[key]
+                print(f"key: {key}, type: {type(reward_values)}, value: {reward_values}")
                 if isinstance(reward_values, list):
-                    metrics[f'eval_rewards/{key[7:]}'] = float(np.mean(reward_values))
+                    metrics[f'eval_rewards/{key}'] = float(np.mean(reward_values))
                 else:
-                    metrics[f'eval_rewards/{key[7:]}'] = reward_values.mean().item()
+                    metrics[f'eval_rewards/{key}'] = reward_values.mean().item()
         
         # Compute completion length statistics
         if 'completion' in eval_results:
@@ -953,8 +959,19 @@ class GRPOTrainer(Trainer):
             if 'reward' in eval_results:
                 reward_dict['reward'] = eval_results['reward'][:self.num_completions_to_print]
             for key in eval_results:
-                if key.startswith('reward_') and key != 'reward':
+                if key != 'reward' and key.endswith('_func'):  # Include all keys except the consolidated 'reward' key
                     reward_dict[key] = eval_results[key][:self.num_completions_to_print]
+            
+            print(f"reward_dict: {reward_dict}")
+            
+            # Extract states for additional logging
+            states = eval_results.get('state', [])[:self.num_completions_to_print]
+            judge_logging_data = []
+            
+            for state in states:
+                # Retrieve judge logging data from state
+                judge_data = state.get("judge_logging_data", "No judge logging data available")
+                judge_logging_data.append(judge_data)
             
             # Print sample
             print_prompt_completions_sample(
@@ -967,14 +984,23 @@ class GRPOTrainer(Trainer):
             # Log to wandb if available
             if self.args.report_to and "wandb" in self.args.report_to and wandb.run is not None:
                 import pandas as pd
+                concat_completions = []
+                for completion_list in completions:
+                        # Extract content and role from each completion
+                        contents = [comp.get("content", "") for comp in completion_list]
+                        roles = [comp.get("role", "") for comp in completion_list]
+                        concat =  "\n".join([f"{r}:{c}" for r, c in zip(roles, contents)]) 
+                        concat_completions.append(concat)
                 
                 table_data = {
                     "step": [str(self.state.global_step)] * len(prompts),
                     "prompt": prompts,
-                    "completion": completions,
+                    "completion": concat_completions,
+                    **{k: list(v) for k, v in reward_dict.items()}
                 }
-                for k, v in reward_dict.items():
-                    table_data[k] = v
+                
+                # Add judge logging data
+                table_data["judge_logging_data"] = judge_logging_data
                     
                 df = pd.DataFrame(table_data)
                 wandb.log({"eval_completions": wandb.Table(dataframe=df)})
@@ -996,9 +1022,9 @@ class GRPOTrainer(Trainer):
 
         logs = {**logs, **metrics}
         if start_time is not None:
-            super().log(logs, start_time)
+            super().log(logs, start_time) # type: ignore
         else:
-            super().log(logs)
+            super().log(logs) # type: ignore        
         self._metrics[mode].clear()
 
         if self.accelerator.is_main_process and self.log_completions:
@@ -1012,13 +1038,24 @@ class GRPOTrainer(Trainer):
 
             if self.args.report_to and "wandb" in self.args.report_to and wandb.run is not None:
                 import pandas as pd
+                concat_completions = []
+                for completion_list in self._textual_logs["completion"]:
+                        # Extract content and role from each completion
+                        contents = [comp.get("content", "") for comp in completion_list]
+                        roles = [comp.get("role", "") for comp in completion_list]
+                        concat =  "\n".join([f"{r}:{c}" for r, c in zip(roles, contents)]) 
+                        concat_completions.append(concat)
  
                 table = {
                     "step": [str(self.state.global_step)] * len(self._textual_logs["prompt"]),
                     "prompt": list(self._textual_logs["prompt"]),
-                    "completion": list(self._textual_logs["completion"]),
+                    "completion": concat_completions,
                     **{k: list(v) for k, v in self._textual_logs["rewards"].items()},
                 }
+                
+                # Add new fields
+                table["judge_logging_data"] = list(self._textual_logs["judge_logging_data"])
+                    
                 if len(table["prompt"]) > 0:
                     df = pd.DataFrame(table)
                     if self.wandb_log_unique_prompts:
@@ -1030,6 +1067,8 @@ class GRPOTrainer(Trainer):
             self._textual_logs["completion"].clear()
             for key in self._textual_logs["rewards"]:
                 self._textual_logs["rewards"][key].clear()
+            # Clear new fields
+            self._textual_logs["judge_logging_data"].clear()
 
     def _log_reward_metrics_primary(
         self,
@@ -1053,9 +1092,9 @@ class GRPOTrainer(Trainer):
             if reward_key != 'reward':  # Skip the consolidated reward
                 reward_values = all_reward_dict[reward_key]
                 if isinstance(reward_values, list):
-                    reward_tensor = torch.tensor(reward_values, device=all_rewards.device)
+                    reward_tensor = torch.tensor(reward_values, device=all_rewards.device, dtype=torch.float32)
                 else:
-                    reward_tensor = reward_values
+                    reward_tensor = reward_values.to(dtype=torch.float32)
                 mean_reward = reward_tensor.mean().item()
                 self._metrics[mode][f"rewards/{reward_key}"].append(mean_reward)
 
@@ -1063,12 +1102,46 @@ class GRPOTrainer(Trainer):
         self,
         all_prompts: List[Union[str, List[Dict[str, Any]]]],
         all_completions: List[Union[str, List[Dict[str, Any]]]],
-        all_reward_dict: Dict[str, Any]
+        all_reward_dict: Dict[str, Any],
+        all_states: Optional[Dict[str, Any]] = None
     ) -> None:
         """
         Log textual data for wandb (PRIMARY PROCESS ONLY).
         This logs the full batch of prompts, completions, and rewards.
         """
+        if all_states:
+            updated_prompts = []
+            updated_completions = []
+            judge_logging_data = []
+            
+            for prompt, state in zip(all_prompts, all_states or []):
+                game_prompt = state.get("game_prompt", "") # type: ignore
+                if isinstance(prompt, str):
+                    updated_prompts.append(prompt + "\n\n**ONLY FOR LOGGING PURPOSES**\n\n" + game_prompt)
+                elif isinstance(prompt, list) and len(prompt) > 0 and isinstance(prompt[-1], dict):
+                    # Append game prompt to the last dict in the list
+                    updated_prompts.append(prompt[-1]['content'] + "\n\n**ONLY FOR LOGGING PURPOSES**\n\n"+ game_prompt)
+                else:
+                    # If prompt is a list but not in chat format, just append the game prompt
+                    updated_prompts.append(game_prompt)
+
+                messages_for_logging = state.get("messages_for_logging", []) # type: ignore
+                updated_completions.append(messages_for_logging)
+                
+                # Retrieve judge logging data from state
+                judge_data = state.get("judge_logging_data", "No judge logging data available") # type: ignore
+                judge_logging_data.append(judge_data)
+            
+            all_prompts = updated_prompts
+            all_completions = updated_completions
+            
+            # Add the judge logging data to textual logs
+            self._textual_logs["judge_logging_data"].extend(judge_logging_data)
+        else:
+            # No states available, add empty values
+            num_items = len(all_prompts)
+            self._textual_logs["judge_logging_data"].extend(["No judge logging data available"] * num_items)
+            
         self._textual_logs["prompt"].extend(all_prompts)
         self._textual_logs["completion"].extend(all_completions)
         

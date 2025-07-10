@@ -126,3 +126,12 @@ After thinking, then output your response for the opponent within the <answer> t
 ...
 </answer>
 """
+
+MODIFIED_TEXTARENA_PROMPT =  """
+You are a player in a game and your aim is to win the game. At every turn of yours, first try to predict the thinking process of the opponent, that is, given opponent's latest response, answer the question - What is the opponent's thinking behind saying this? Put the answer to this question within the <prediction></prediction> tags. Beging your answer with 'The opponent is thinking that...'.
+Then based on your prediction, think through different next possible moves inside the <think></think> tags and choose the most optimal one. 
+After reasoning, then output your response for the opponent within the <response></response> tags. Respond in the following format:
+<prediction>...</prediction>
+<think>...</think>
+<response>...</response>
+"""

@@ -8,6 +8,7 @@ from .doublecheck_env import DoubleCheckEnv
 from .reasoninggym_env import ReasoningGymEnv
 from .tool_env import ToolEnv
 from .textarena_env import TextArenaEnv
+from .textarena_env_modified import ModifiedTextArenaEnv
 
 from .smola_tool_env import SmolaToolEnv
 
@@ -21,5 +22,6 @@ __all__ = [
     'ToolEnv',
     'SmolaToolEnv',
     'TextArenaEnv',
+    'ModifiedTextArenaEnv',
 ]
 

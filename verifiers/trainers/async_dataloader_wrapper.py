@@ -1,5 +1,5 @@
 from typing import Any, List
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader #type: ignore
 from collections import deque
 import threading
 
@@ -47,20 +47,30 @@ class AsyncDataLoaderWrapper:
             
     def peek_ahead(self, n: int = 1) -> List[Any]:
         """
-        Peek at the next n batches without consuming them.
-        If n=0, returns the current batch (if available).
-        Returns fewer batches if not enough are available.
+        Peek at the next *n* batches without consuming them.
+        Special-case *n == 0*: this is interpreted as *"return the current batch"*.
+        If no batch has been consumed yet, we transparently fetch the first batch so
+        the caller never receives an empty list.
         """
         with self._lock:
             if n == 0:
-                # Return current batch if available
+                # If no current batch, make sure at least one batch is available
+                if self._current_batch is None:
+                    if not self._buffer and not self._exhausted:
+                        self._fill_buffer_single()
+                    if self._buffer:
+                        self._current_batch = self._buffer[0]
                 return [self._current_batch] if self._current_batch is not None else []
-            
-            # Ensure buffer has enough items
+
+            # Cap n to buffer_size to avoid infinite loops if caller requests
+            # more batches than the buffer can physically hold.
+            n = min(n, self.buffer_size)
+
+            # Ensure buffer holds at least *n* items
             while len(self._buffer) < n and not self._exhausted:
                 self._fill_buffer_single()
-                
-            # Return up to n items from buffer
+
+            # Return up to *n* items (may be fewer if exhausted)
             return list(self._buffer)[:n]
             
     def _fill_buffer(self):
@@ -69,15 +79,31 @@ class AsyncDataLoaderWrapper:
             self._fill_buffer_single()
             
     def _fill_buffer_single(self):
-        """Add a single batch to the buffer"""
+        """Add a single batch to the buffer. If the underlying DataLoader is exhausted, automatically
+        restart it so that training loops that expect an endless stream of data (e.g. when using a
+        `RepeatSampler`) keep working without raising `StopIteration`.
+        """
         if self._iterator is None:
             self._iterator = iter(self.dataloader)
-            
-        try:
-            batch = next(self._iterator)
-            self._buffer.append(batch)
-        except StopIteration:
-            self._exhausted = True
+
+        while True:  # keep trying until we successfully fetch a batch or confirm true exhaustion
+            try:
+                batch = next(self._iterator)
+                self._buffer.append(batch)
+                break  # success, exit the loop
+            except StopIteration:
+                # End of epoch –  start a new one
+                self._current_epoch += 1
+                self._iterator = iter(self.dataloader)
+                # Try again; if DataLoader immediately raises StopIteration again, we'll mark exhausted
+                try:
+                    batch = next(self._iterator)
+                    self._buffer.append(batch)
+                    break  # obtained batch after restarting epoch
+                except StopIteration:
+                    # Underlying DataLoader truly has no data; mark as exhausted and break
+                    self._exhausted = True
+                    break
             
     def get_future_batches(self, start_offset: int, count: int) -> List[Any]:
         """
@@ -116,4 +142,24 @@ class AsyncDataLoaderWrapper:
     @property
     def dataset(self):
         """Return dataset of underlying dataloader"""
-        return self.dataloader.dataset 
+        return self.dataloader.dataset
+
+    @property
+    def sampler(self):
+        """Expose the sampler of the underlying dataloader.
+
+        Having the `sampler` attribute available is required by several utilities in
+        `transformers`/`accelerate` (e.g. `skip_first_batches`). This property simply
+        forwards the call to the wrapped dataloader so that any logic depending on
+        the sampler can function without modification.
+        """
+        return self.dataloader.sampler
+
+    def __getattr__(self, name: str):
+        """Delegate attribute access to the wrapped dataloader when not found here.
+
+        This makes the wrapper behave transparently like a regular `DataLoader` for
+        most intents and purposes, exposing attributes such as `batch_sampler`,
+        `drop_last`, etc., that might be accessed by external libraries.
+        """
+        return getattr(self.dataloader, name) 

@@ -1,5 +1,5 @@
 import verifiers as vf
-from verifiers.prompts import TEXTARENA_PROMPT, TEXTARENA_PROMPT_V2
+from verifiers.prompts import MODIFIED_TEXTARENA_PROMPT
 import os
 import argparse
 from datetime import datetime
@@ -14,7 +14,8 @@ def setup_environment():
     os.environ["TORCH_NCCL_BLOCKING_WAIT"] = "1"
     os.environ["TORCH_NCCL_ASYNC_ERROR_HANDLING"] = "1" 
     os.environ["TORCH_DISTRIBUTED_TIMEOUT"] = "3600"  
-    # os.environ["NCCL_P2P_DISABLE"] = "1"
+    os.environ["NCCL_P2P_DISABLE"] = "1"
+    os.environ["NCCL_IB_DISABLE"] = "1"
     os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
 
 def get_latest_checkpoint(checkpoint_dir):
@@ -53,24 +54,18 @@ def main(args):
         json.dump(vars(args), f, indent=4)
     print(f"Arguments saved to {args_file}")
 
-    model, tokenizer = vf.get_model_and_tokenizer(args.model_name)
+    model, tokenizer = vf.get_model_and_tokenizer(args.model_name) #type: ignore
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.pad_token_id = tokenizer.eos_token_id
 
-    if args.system_prompt_version == "v1":
-        system_prompt = TEXTARENA_PROMPT
-        answer_tag = "response"
-        stop_tag = "</response>"
-        xml_parser = XMLParser(fields=["reasoning", answer_tag], answer_field=answer_tag)
-    elif args.system_prompt_version == "v2":
-        system_prompt = TEXTARENA_PROMPT_V2
-        answer_tag = "answer"
-        stop_tag = "</answer>"
-        xml_parser = XMLParser(fields=["think", answer_tag], answer_field=answer_tag)
+    system_prompt = MODIFIED_TEXTARENA_PROMPT
+    answer_tag = "response"
+    stop_tag = "</response>"
+    xml_parser = XMLParser(fields=["prediction", "think", answer_tag], answer_field=answer_tag)
         
     dataset = load_example_dataset(name=args.dataset_name, env_id=args.env_id, player_id=args.train_player_id, split='train')
     eval_dataset = load_example_dataset(name=args.dataset_name, env_id=args.env_id, player_id=args.train_player_id, split='test')
-    vf_env = vf.TextArenaEnv(
+    vf_env = vf.ModifiedTextArenaEnv( #type: ignore
         env_id=args.env_id,
         system_prompt=system_prompt,
         xml_parser=xml_parser,
@@ -114,19 +109,21 @@ def main(args):
     print(f"Env ID: {args.env_id}")
     print(f"Resume from checkpoint: {args.resume_from_checkpoint}")
     
-    training_args=vf.grpo_defaults(run_name=run_name, output_dir=OUTPUT_DIR)
+    training_args=vf.grpo_defaults(run_name=run_name, output_dir=OUTPUT_DIR) #type: ignore
 
     training_args.num_generations = args.num_generations
     training_args.per_device_train_batch_size = args.per_device_train_batch_size
     training_args.gradient_accumulation_steps = args.gradient_accumulation_steps
     training_args.max_steps = args.max_steps
-    training_args.save_steps = 50
+    training_args.save_steps = 100
     training_args.seed = args.seed
-    training_args.torch_empty_cache_steps = 50 
+    training_args.torch_empty_cache_steps = 50
+    training_args.loss_type = "dr_grpo"
+    training_args.scale_rewards = False
     
     # Evaluation
     training_args.eval_strategy = "steps"
-    training_args.eval_steps = 1
+    training_args.eval_steps = 16
     # Set eval batch size larger than train batch size for optimal GPU utilization (e.g., double)
     training_args.per_device_eval_batch_size = 16
     
@@ -135,7 +132,7 @@ def main(args):
         print(f"Attempting to load checkpoint from {args.resume_from_checkpoint}")
         training_args.resume_from_checkpoint = args.resume_from_checkpoint
 
-    trainer = vf.GRPOTrainer(
+    trainer = vf.GRPOTrainer( #type: ignore
         model=model,
         processing_class=tokenizer,
         env=vf_env,

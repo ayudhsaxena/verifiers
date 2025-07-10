@@ -3,8 +3,8 @@
 from dataclasses import dataclass, field
 from typing import Optional, Union
 
-import transformers
-from packaging import version
+import transformers # type: ignore
+from packaging import version # type: ignore
 from transformers import TrainingArguments # type: ignore
 
 
@@ -163,7 +163,7 @@ class GRPOConfig(TrainingArguments):
         },
     )
     async_generation_timeout: float = field(
-        default=300.0,
+        default=900.0,
         metadata={
             "help": "Timeout in seconds for async generation. If a batch doesn't complete within this time, "
             "a TimeoutError is raised."
@@ -340,7 +340,7 @@ class GRPOConfig(TrainingArguments):
                 f"{self.num_generations}, which is less than the minimum required."
             )
         possible_values = [
-            n_gen for n_gen in range(2, self.generation_batch_size + 1) if (self.generation_batch_size) % n_gen == 0
+            n_gen for n_gen in range(2, self.generation_batch_size + 1) if (self.generation_batch_size) % n_gen == 0 # type: ignore
         ]
 
         if self.num_generations not in possible_values:
