@@ -1,5 +1,5 @@
 import verifiers as vf
-from verifiers.prompts import MODIFIED_TEXTARENA_PROMPT
+from verifiers.prompts import SOTOPIA_PROMPT
 import os
 import argparse
 from datetime import datetime
@@ -17,6 +17,7 @@ def setup_environment():
     os.environ["NCCL_P2P_DISABLE"] = "1"
     os.environ["NCCL_IB_DISABLE"] = "1"
     os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
+    os.environ["DISABLE_AIOHTTP_TRANSPORT"] = "True"
 
 def get_latest_checkpoint(checkpoint_dir):
     """
@@ -58,22 +59,26 @@ def main(args):
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.pad_token_id = tokenizer.eos_token_id
 
-    system_prompt = MODIFIED_TEXTARENA_PROMPT
+    system_prompt = SOTOPIA_PROMPT
+    think_tag = "think"
     answer_tag = "response"
     stop_tag = "</response>"
-    xml_parser = XMLParser(fields=["prediction", "think", answer_tag], answer_field=answer_tag)
+    xml_parser = XMLParser(fields=[think_tag, answer_tag], answer_field=answer_tag)
         
-    dataset = load_example_dataset(name=args.dataset_name, env_id=args.env_id, player_id=args.train_player_id, split='train')
-    eval_dataset = load_example_dataset(name=args.dataset_name, env_id=args.env_id, player_id=args.train_player_id, split='test')
-    vf_env = vf.ModifiedTextArenaEnv( #type: ignore
-        env_id=args.env_id,
+    dataset = load_example_dataset(name=args.dataset_name,n=2000, split='train')
+    eval_dataset = load_example_dataset(name=args.dataset_name,n=50, split='test')
+    
+    vf_env = vf.SotopiaEnv( #type: ignore
         system_prompt=system_prompt,
-        xml_parser=xml_parser,
+        parser=xml_parser,
         answer_tag=answer_tag,
+        think_tag=think_tag,
         sampling_args={
             "stop": [stop_tag],
         },
         train_player_id=args.train_player_id,
+        max_turns=20,
+        evaluator_model=args.evaluator_model,
         dataset=dataset,
         eval_dataset=eval_dataset,
     )
@@ -100,13 +105,12 @@ def main(args):
 
     if args.run_name is None:
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        run_name = "textarena_" + args.model_name.split("/")[-1].lower() + "_" + vf_env.env_id + "_" + timestamp
+        run_name = "sotopia_" + args.model_name.split("/")[-1].lower() + "_" + timestamp
     else:
         run_name = args.run_name
 
     print(f"Run name: {run_name}")
     print(f"Model name: {args.model_name}")
-    print(f"Env ID: {args.env_id}")
     print(f"Resume from checkpoint: {args.resume_from_checkpoint}")
     
     training_args=vf.grpo_defaults(run_name=run_name, output_dir=OUTPUT_DIR) #type: ignore
@@ -115,11 +119,11 @@ def main(args):
     training_args.per_device_train_batch_size = args.per_device_train_batch_size
     training_args.gradient_accumulation_steps = args.gradient_accumulation_steps
     training_args.max_steps = args.max_steps
-    training_args.save_steps = 200
+    training_args.save_steps = 500
     training_args.seed = args.seed
     training_args.torch_empty_cache_steps = 50
-    training_args.loss_type = "dr_grpo"
-    training_args.scale_rewards = False
+    # training_args.loss_type = "dr_grpo"
+    # training_args.scale_rewards = False
     
     # Evaluation
     training_args.eval_strategy = "steps"
@@ -142,9 +146,7 @@ def main(args):
     trainer.train(resume_from_checkpoint=True if args.resume_from_checkpoint else False)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train a model for the TextArena environment")
-    parser.add_argument("--env_id", type=str, default="TruthAndDeception-v0", 
-                        help="Environment ID for TextArena")
+    parser = argparse.ArgumentParser(description="Train a model for the Sotopia environment")
     parser.add_argument("--max_steps", type=int, default=200, 
                         help="Maximum number of training steps")
     parser.add_argument("--resume_from_checkpoint", type=str, default=None,
@@ -161,18 +163,13 @@ if __name__ == "__main__":
                         help="Number of generations per prompt")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed for initialization")
-    parser.add_argument("--xml_reward_weight", type=float, default=1.0,
-                        help="Weight for XML format reward")
-    parser.add_argument("--format_reward_weight", type=float, default=1.0,
-                        help="Weight for format reward")
-    parser.add_argument("--system_prompt_version", type=str, default="v1",
-                        help="Version of the system prompt to use")
     parser.add_argument("--train_player_id", type=int, default=0,
                         help="Player id to train")
-    parser.add_argument("--dataset_name", type=str, default="textarena")
-    parser.add_argument("--eval_dataset", type=str, default=None)
+    parser.add_argument("--dataset_name", type=str, default="sotopia")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=4,
                         help="Number of gradient accumulation steps")
+    parser.add_argument("--evaluator_model", type=str, default="gpt-4o-mini",
+                        help="Model to use for LLM-based evaluation (default: gpt-4o-mini)")
     
     args = parser.parse_args()
-    main(args)
+    main(args) 

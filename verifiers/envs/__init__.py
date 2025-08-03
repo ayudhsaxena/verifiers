@@ -9,6 +9,8 @@ from .reasoninggym_env import ReasoningGymEnv
 from .tool_env import ToolEnv
 from .textarena_env import TextArenaEnv
 from .textarena_env_modified import ModifiedTextArenaEnv
+from .sotopia_env import SotopiaEnv
+from .sotopia_env_modified import ModifiedSotopiaEnv
 
 from .smola_tool_env import SmolaToolEnv
 
@@ -23,5 +25,7 @@ __all__ = [
     'SmolaToolEnv',
     'TextArenaEnv',
     'ModifiedTextArenaEnv',
+    'SotopiaEnv',
+    'ModifiedSotopiaEnv',
 ]
 

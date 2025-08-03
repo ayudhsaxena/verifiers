@@ -128,10 +128,51 @@ After thinking, then output your response for the opponent within the <answer> t
 """
 
 MODIFIED_TEXTARENA_PROMPT =  """
-You are a player in a game and your aim is to win the game. At every turn of yours, first try to predict the thinking process of the opponent, that is, given opponent's latest response, answer the question - What is the opponent's thinking behind saying this? Put the answer to this question within the <prediction></prediction> tags. Beging your answer with 'The opponent is thinking that...'.
-Then based on your prediction, think through different next possible moves inside the <think></think> tags and choose the most optimal one. 
-After reasoning, then output your response for the opponent within the <response></response> tags. Respond in the following format:
+You are a strategic game player in a game, and your aim is to win the game. At every conversation turn between you and your opponent, first predict the thinking process of your opponent. That is, given your opponent's latest response, answer the following question - What is your opponent's thought process behind their latest response? Put the answer to this question within the <prediction></prediction> tags. ALWAYS begin your answer with 'I think my opponent is thinking that...'.
+
+Then based on your prediction of what your opponent is thinking, generate 3 different next possible moves inside the <think></think> tags. Then, think about which of these N moves is the most optimal move, given your prediction about what your opponent is thinking. Output your final response for your opponent within the <response></response> tags. 
+
+Your response should have the following format: 
 <prediction>...</prediction>
 <think>...</think>
 <response>...</response>
+"""
+
+# MODIFIED_TEXTARENA_PROMPT =  """
+# You are a player in a game and your aim is to win the game. At every turn of yours, first try to predict the thinking process of the opponent, that is, given opponent's latest response, answer the question - What is the opponent's thinking behind saying this? Put the answer to this question within the <prediction></prediction> tags. Beging your answer with 'The opponent is thinking that...'.
+# Then based on your prediction, think through different next possible moves inside the <think></think> tags and choose the most optimal one. 
+# After reasoning, then output your response for the opponent within the <response></response> tags. Respond in the following format:
+# <prediction>...</prediction>
+# <think>...</think>
+# <response>...</response>
+# """
+
+SOTOPIA_PROMPT = """
+You are a participant in a social interaction scenario. Your goal is to engage in natural, meaningful conversation while working towards your assigned objective. Before you respond, think carefully within the <think></think> tags about what's the best way to respond to the other participant.
+Respond in the following format:
+<think>...</think>
+<response>...</response>
+
+The content inside the <response></response> tags should be a valid JSON object with the actual values following the JSON schema provided and NOT the JSON schema itself. 
+For example:
+<think>Doing some thinking here</think>
+<response>{{"action_type": "speak", "argument": "Hello, how are you?"}}</response>
+"""
+
+MODIFIED_SOTOPIA_PROMPT = """
+You are a participant in a social interaction scenario, and your goal is to engage in natural, meaningful conversation while working towards your assigned objective. At every conversation turn between you and the other participant, first predict the thinking process of the other participant. That is, given the other participant's latest response, answer the following question - What is the other participant's thought process behind their latest response? Put the answer to this question within the <prediction></prediction> tags. ALWAYS begin your answer with 'I think the other participant is thinking that...'.
+
+Then based on your prediction of what the other participant is thinking, think through different ways to respond and choose the most suitable one. Output your final response within the <response></response> tags.
+
+The content inside the <response></response> tags should be a valid JSON object with the actual values following the JSON schema provided and NOT the JSON schema itself.
+
+Your response should have the following format:
+<prediction>...</prediction>
+<think>...</think>
+<response>...</response>
+
+For example:
+<prediction>I think the other participant is thinking that I'm being too formal and they want to have a more casual conversation.</prediction>
+<think>Based on this prediction, I should be more relaxed and friendly in my response to match their conversational style.</think>
+<response>{{"action_type": "speak", "argument": "Hey, how's it going? Nice to meet you!"}}</response>
 """

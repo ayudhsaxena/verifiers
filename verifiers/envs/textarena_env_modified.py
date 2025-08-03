@@ -140,7 +140,7 @@ class ModifiedTextArenaEnv(TextArenaEnv):
     def simulate_env_player_step(self, state: Dict[str, Any], turn: int) -> Dict[str, str]:  
         env = state["env"]
         player_id, obs = env.get_observation()
-        assert player_id == self.env_player_id
+        assert player_id == self.env_player_id, f"player_id: {player_id}, env_player_id: {self.env_player_id}"
         raw_response, _ = self.expert_agent(obs)
         parsed_response = self.env_parser.parse(raw_response)
         if hasattr(parsed_response, self.env_answer_tag):
@@ -167,6 +167,30 @@ class ModifiedTextArenaEnv(TextArenaEnv):
             "content": raw_response,
         })
         return {"role": "user", "content": action}
+    
+    def get_logging_data(self, all_prompts: List[Dict[str, Any]], all_states: List[Dict[str, Any]]) -> Dict[str, Any]:
+        updated_prompts = []
+        updated_completions = []
+        judge_logging_data = []
+        
+        for prompt, state in zip(all_prompts, all_states or []):
+            game_prompt = state.get("game_prompt", "") # type: ignore
+            if isinstance(prompt, str):
+                updated_prompts.append(prompt + "\n\n**ONLY FOR LOGGING PURPOSES**\n\n" + game_prompt)
+            elif isinstance(prompt, list) and len(prompt) > 0 and isinstance(prompt[-1], dict):
+                # Append game prompt to the last dict in the list
+                updated_prompts.append(prompt[-1]['content'] + "\n\n**ONLY FOR LOGGING PURPOSES**\n\n"+ game_prompt)
+            else:
+                # If prompt is a list but not in chat format, just append the game prompt
+                updated_prompts.append(game_prompt)
+
+            messages_for_logging = state.get("messages_for_logging", []) # type: ignore
+            updated_completions.append(messages_for_logging)
+            
+            # Retrieve judge logging data from state
+            judge_data = state.get("judge_logging_data", "No judge logging data available") # type: ignore
+            judge_logging_data.append(judge_data)
+        return {"updated_prompts": updated_prompts, "updated_completions": updated_completions, "judge_logging_data": judge_logging_data}
 
 
         

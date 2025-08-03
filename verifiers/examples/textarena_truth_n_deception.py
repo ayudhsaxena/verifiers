@@ -14,7 +14,8 @@ def setup_environment():
     os.environ["TORCH_NCCL_BLOCKING_WAIT"] = "1"
     os.environ["TORCH_NCCL_ASYNC_ERROR_HANDLING"] = "1" 
     os.environ["TORCH_DISTRIBUTED_TIMEOUT"] = "3600"  
-    # os.environ["NCCL_P2P_DISABLE"] = "1"
+    os.environ["NCCL_P2P_DISABLE"] = "1"
+    os.environ["NCCL_IB_DISABLE"] = "1"
     os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
 
 def get_latest_checkpoint(checkpoint_dir):

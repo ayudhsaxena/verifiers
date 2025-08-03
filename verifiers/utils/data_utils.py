@@ -40,7 +40,7 @@ def extract_hash_answer(text: str) -> str | None:
     return text.split("####")[1].strip()
 
 def get_preprocess_fn(name: str,
-                      env_id: str = None) -> Callable[[Dict], Dict]: 
+                      env_id: str | None = None) -> Callable[[Dict], Dict]: 
     if name == "aime2024":
         def preprocess_aime2024(x: Dict[str, Any]) -> Dict[str, Any]:
             return {
@@ -181,6 +181,13 @@ def get_preprocess_fn(name: str,
             'answer': '',
         }
         return preprocess_textarena
+    elif name == "sotopia":
+        def preprocess_sotopia_environment_pks(x: Dict[str, Any]) -> Dict[str, Any]:
+            return {
+                "prompt": f"{x['env_pk']},{x['agent1_pk']},{x['agent2_pk']}",
+                "answer": ''
+            }
+        return preprocess_sotopia_environment_pks
     else:
         raise ValueError(f"Dataset {name} not supported for preprocess_dataset.")
 
@@ -188,7 +195,7 @@ def load_example_dataset(name: str = "gsm8k",
                          split: str | None = None,
                          n: int | None = None,
                          seed: int = 0,
-                         env_id: str = None,
+                         env_id: str | None = None,
                          player_id: int = 0) -> Dataset:
     if name == "aime2024":
         if split is None:
@@ -278,6 +285,10 @@ def load_example_dataset(name: str = "gsm8k",
                     dataset: Dataset = load_dataset("saintlyk1d/dont-say-it-prompts-player1-test-set-variant-C")["train"]
         else:
             raise ValueError(f"env_id {env_id} not supported for preprocess_dataset.")
+    elif name == "sotopia":
+        if split is None:
+            split = "train"
+        dataset: Dataset = load_dataset("saintlyk1d/sotopia-environment-agent-combinations")[split]
     else:
         raise ValueError(f"Dataset {name} not supported for preprocess_dataset. \
 Please ensure that the dataset is formatted with 'prompt' (str) and 'answer' (str) keys.")
@@ -291,7 +302,7 @@ Please ensure that the dataset is formatted with 'prompt' (str) and 'answer' (st
     return dataset
 
 
-def get_metadata(input: Dict, env_id: str) -> List[str]:
+def get_metadata(input: Dict, env_id: str | None) -> Dict[str, Any]:
     if env_id == "DontSayIt-v0":
         return {
             "opponent_word": input["opponent_word"],

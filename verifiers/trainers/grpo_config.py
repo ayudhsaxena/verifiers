@@ -163,7 +163,7 @@ class GRPOConfig(TrainingArguments):
         },
     )
     async_generation_timeout: float = field(
-        default=900.0,
+        default=3600.0,
         metadata={
             "help": "Timeout in seconds for async generation. If a batch doesn't complete within this time, "
             "a TimeoutError is raised."

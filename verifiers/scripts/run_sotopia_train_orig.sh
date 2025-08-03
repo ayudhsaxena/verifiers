@@ -1,11 +1,10 @@
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 accelerate launch \
             --config-file configs/zero3.yaml \
             --num_processes=7 \
-            verifiers/examples/textarena_truth_n_deception_modified.py \
-            --env_id=TruthAndDeception-v0 \
-            --dataset_name=textarena \
+            verifiers/examples/sotopia_train.py \
+            --dataset_name=sotopia \
             --max_steps=400 \
-            --run_name=modified_truth-n-deception-qwen-2.5-7B-instruct-deceiver_dr_grpo_ \
+            --run_name=sotopia-qwen-2.5-7B-instruct-player-0 \
             --seed=11 \
             --resume_training_from_last_checkpoint \
             --per_device_train_batch_size=8 \

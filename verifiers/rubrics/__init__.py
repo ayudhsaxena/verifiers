@@ -7,6 +7,8 @@ from .tool_rubric import ToolRubric
 from .smola_tool_rubric import SmolaToolRubric
 from .textarena_rubric import TextArenaRubric
 from .textarena_rubric_modified import ModifiedTextArenaRubric
+from .sotopia_rubric import SotopiaRubric
+from .sotopia_rubric_modified import ModifiedSotopiaRubric
 
 __all__ = [
     "Rubric",
@@ -18,4 +20,6 @@ __all__ = [
     "SmolaToolRubric",
     "TextArenaRubric",
     "ModifiedTextArenaRubric",
+    "SotopiaRubric",
+    "ModifiedSotopiaRubric",
 ]

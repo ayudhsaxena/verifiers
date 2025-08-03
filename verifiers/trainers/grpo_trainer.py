@@ -923,7 +923,6 @@ class GRPOTrainer(Trainer):
         for key in eval_results:
             if key != 'reward' and key.endswith('_func'):  # Include all keys except the consolidated 'reward' key
                 reward_values = eval_results[key]
-                print(f"key: {key}, type: {type(reward_values)}, value: {reward_values}")
                 if isinstance(reward_values, list):
                     metrics[f'eval_rewards/{key}'] = float(np.mean(reward_values))
                 else:
@@ -961,22 +960,18 @@ class GRPOTrainer(Trainer):
             for key in eval_results:
                 if key != 'reward' and key.endswith('_func'):  # Include all keys except the consolidated 'reward' key
                     reward_dict[key] = eval_results[key][:self.num_completions_to_print]
-            
-            print(f"reward_dict: {reward_dict}")
-            
+                        
             # Extract states for additional logging
             states = eval_results.get('state', [])[:self.num_completions_to_print]
-            judge_logging_data = []
-            
-            for state in states:
-                # Retrieve judge logging data from state
-                judge_data = state.get("judge_logging_data", "No judge logging data available")
-                judge_logging_data.append(judge_data)
-            
+            logging_data = self.env.get_logging_data(prompts, states)
+            updated_prompts = logging_data.get("updated_prompts", prompts)
+            updated_completions = logging_data.get("updated_completions", completions)
+            judge_logging_data = logging_data.get("judge_logging_data", ["No judge logging data available"] * len(updated_prompts))
+
             # Print sample
             print_prompt_completions_sample(
-                prompts,
-                completions, 
+                updated_prompts,
+                updated_completions, 
                 reward_dict,
                 self.state.global_step,
             )
@@ -985,7 +980,7 @@ class GRPOTrainer(Trainer):
             if self.args.report_to and "wandb" in self.args.report_to and wandb.run is not None:
                 import pandas as pd
                 concat_completions = []
-                for completion_list in completions:
+                for completion_list in updated_completions:
                         # Extract content and role from each completion
                         contents = [comp.get("content", "") for comp in completion_list]
                         roles = [comp.get("role", "") for comp in completion_list]
@@ -993,8 +988,8 @@ class GRPOTrainer(Trainer):
                         concat_completions.append(concat)
                 
                 table_data = {
-                    "step": [str(self.state.global_step)] * len(prompts),
-                    "prompt": prompts,
+                    "step": [str(self.state.global_step)] * len(updated_prompts),
+                    "prompt": updated_prompts,
                     "completion": concat_completions,
                     **{k: list(v) for k, v in reward_dict.items()}
                 }
@@ -1003,7 +998,7 @@ class GRPOTrainer(Trainer):
                 table_data["judge_logging_data"] = judge_logging_data
                     
                 df = pd.DataFrame(table_data)
-                wandb.log({"eval_completions": wandb.Table(dataframe=df)})
+                wandb.log({"eval_completions": wandb.Table(dataframe=df, log_mode="INCREMENTAL")}, step=self.state.global_step)
         
         # Log all metrics
         self.log(metrics)
@@ -1053,14 +1048,14 @@ class GRPOTrainer(Trainer):
                     **{k: list(v) for k, v in self._textual_logs["rewards"].items()},
                 }
                 
-                # Add new fields
+                #Add new fields
                 table["judge_logging_data"] = list(self._textual_logs["judge_logging_data"])
                     
                 if len(table["prompt"]) > 0:
                     df = pd.DataFrame(table)
                     if self.wandb_log_unique_prompts:
                         df = df.drop_duplicates(subset=["prompt"])
-                    wandb.log({"completions": wandb.Table(dataframe=df)})
+                    wandb.log({"completions": wandb.Table(dataframe=df, log_mode="INCREMENTAL")}, step=self.state.global_step)
 
             # Clear the textual logs after logging
             self._textual_logs["prompt"].clear()
@@ -1109,41 +1104,22 @@ class GRPOTrainer(Trainer):
         Log textual data for wandb (PRIMARY PROCESS ONLY).
         This logs the full batch of prompts, completions, and rewards.
         """
+        updated_prompts = all_prompts
+        updated_completions = all_completions
+        judge_logging_data = ["No judge logging data available"] * len(all_prompts)
         if all_states:
-            updated_prompts = []
-            updated_completions = []
-            judge_logging_data = []
-            
-            for prompt, state in zip(all_prompts, all_states or []):
-                game_prompt = state.get("game_prompt", "") # type: ignore
-                if isinstance(prompt, str):
-                    updated_prompts.append(prompt + "\n\n**ONLY FOR LOGGING PURPOSES**\n\n" + game_prompt)
-                elif isinstance(prompt, list) and len(prompt) > 0 and isinstance(prompt[-1], dict):
-                    # Append game prompt to the last dict in the list
-                    updated_prompts.append(prompt[-1]['content'] + "\n\n**ONLY FOR LOGGING PURPOSES**\n\n"+ game_prompt)
-                else:
-                    # If prompt is a list but not in chat format, just append the game prompt
-                    updated_prompts.append(game_prompt)
+            logging_data = self.env.get_logging_data(all_prompts, all_states)
+            if "updated_prompts" in logging_data:
+                updated_prompts = logging_data["updated_prompts"]
+            if "updated_completions" in logging_data:
+                updated_completions = logging_data["updated_completions"]
+            if "judge_logging_data" in logging_data:
+                judge_logging_data = logging_data["judge_logging_data"]
 
-                messages_for_logging = state.get("messages_for_logging", []) # type: ignore
-                updated_completions.append(messages_for_logging)
-                
-                # Retrieve judge logging data from state
-                judge_data = state.get("judge_logging_data", "No judge logging data available") # type: ignore
-                judge_logging_data.append(judge_data)
             
-            all_prompts = updated_prompts
-            all_completions = updated_completions
-            
-            # Add the judge logging data to textual logs
-            self._textual_logs["judge_logging_data"].extend(judge_logging_data)
-        else:
-            # No states available, add empty values
-            num_items = len(all_prompts)
-            self._textual_logs["judge_logging_data"].extend(["No judge logging data available"] * num_items)
-            
-        self._textual_logs["prompt"].extend(all_prompts)
-        self._textual_logs["completion"].extend(all_completions)
+        self._textual_logs["prompt"].extend(updated_prompts)
+        self._textual_logs["completion"].extend(updated_completions)
+        self._textual_logs["judge_logging_data"].extend(judge_logging_data)
         
         # Log all reward scores - both individual functions and consolidated
         for reward_key in all_reward_dict:

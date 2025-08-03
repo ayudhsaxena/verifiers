@@ -8,7 +8,7 @@ from .parsers.parser import Parser
 from .parsers.xml_parser import XMLParser
 
 from .rubrics.rubric import Rubric
-# from .rubrics.judge_rubric import JudgeRubric
+from .rubrics.judge_rubric import JudgeRubric
 from .rubrics.rubric_group import RubricGroup
 
 from .envs.environment import Environment
@@ -22,6 +22,8 @@ from .envs.tool_env import ToolEnv
 from .envs.smola_tool_env import SmolaToolEnv
 from .envs.textarena_env import TextArenaEnv
 from .envs.textarena_env_modified import ModifiedTextArenaEnv
+from .envs.sotopia_env import SotopiaEnv
+from .envs.sotopia_env_modified import ModifiedSotopiaEnv
 
 from .inference.vllm_client import VLLMClient
 
@@ -52,6 +54,8 @@ __all__ = [
     "ToolEnv",
     "TextArenaEnv",
     "SmolaToolEnv",
+    "SotopiaEnv",
+    "ModifiedSotopiaEnv",
     "GRPOTrainer",
     "GRPOConfig",
     "VLLMClient",
