@@ -1,8 +1,8 @@
 from typing import List, Dict, Any
 
-from verifiers.parsers import XMLParser
-from verifiers.rubrics import Rubric
-
+from verifiers.parsers.xml_parser import XMLParser
+from verifiers.rubrics.rubric import Rubric
+from verifiers.types import ChatMessage
 
 class SotopiaRubric(Rubric):
     """Rubric for the Sotopia multi-turn social-interaction environment.
@@ -30,7 +30,7 @@ class SotopiaRubric(Rubric):
 
         self.parser = parser
         self.reward_funcs = [
-            self.parser.get_format_reward_func(),
+            self.format_reward_func,
             self.accumulated_env_reward_func,
         ]
         self.reward_weights = [
@@ -48,6 +48,11 @@ class SotopiaRubric(Rubric):
         in ``state["reward_sum"]``.
         """
         try:
-            return float(state.get("reward_sum", 0.0))
+            return float(state.get("reward_sum", 0.0))*10
         except Exception:
             return 0.0 
+    
+    def format_reward_func(self, completion: List[ChatMessage], **_) -> float:  # noqa: D401
+        """Return the reward for the formatting of the output.
+        """
+        return self.parser.get_format_reward_func()(completion)*100

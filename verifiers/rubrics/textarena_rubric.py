@@ -1,7 +1,7 @@
 from typing import List, Dict
 from verifiers import RewardFunc
-from verifiers.parsers import XMLParser
-from verifiers.rubrics import Rubric
+from verifiers.parsers.xml_parser import XMLParser
+from verifiers.rubrics.rubric import Rubric
 from typing import List, Dict, Any
 
 

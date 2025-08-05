@@ -1,10 +1,10 @@
 import verifiers as vf
-from verifiers.prompts import TEXTARENA_PROMPT, TEXTARENA_PROMPT_V2
+from verifiers.prompts.system_prompts import TEXTARENA_PROMPT, TEXTARENA_PROMPT_V2
 import os
 import argparse
 from datetime import datetime
-from verifiers.parsers import XMLParser
-from verifiers.utils import load_example_dataset
+from verifiers.parsers.xml_parser import XMLParser
+from verifiers.utils.data_utils import load_example_dataset
 
 
 OUTPUT_DIR = "outputs"

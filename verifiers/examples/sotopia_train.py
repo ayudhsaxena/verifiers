@@ -1,10 +1,10 @@
 import verifiers as vf
-from verifiers.prompts import SOTOPIA_PROMPT
+from verifiers.prompts.system_prompts import SOTOPIA_PROMPT
 import os
 import argparse
 from datetime import datetime
-from verifiers.parsers import XMLParser
-from verifiers.utils import load_example_dataset
+from verifiers.parsers.xml_parser import XMLParser
+from verifiers.utils.data_utils import load_example_dataset
 
 
 OUTPUT_DIR = "outputs"
@@ -47,8 +47,7 @@ def main(args):
 
     checkpoint_dir = os.path.join(OUTPUT_DIR, args.run_name)
 
-    if not os.path.exists(checkpoint_dir):
-        os.makedirs(checkpoint_dir)
+    os.makedirs(checkpoint_dir, exist_ok=True)
     args_file = os.path.join(checkpoint_dir, "args.json")
     with open(args_file, "w") as f:
         import json
@@ -73,9 +72,6 @@ def main(args):
         parser=xml_parser,
         answer_tag=answer_tag,
         think_tag=think_tag,
-        sampling_args={
-            "stop": [stop_tag],
-        },
         train_player_id=args.train_player_id,
         max_turns=20,
         evaluator_model=args.evaluator_model,
@@ -127,7 +123,7 @@ def main(args):
     
     # Evaluation
     training_args.eval_strategy = "steps"
-    training_args.eval_steps = 16
+    training_args.eval_steps = 20
     # Set eval batch size larger than train batch size for optimal GPU utilization (e.g., double)
     training_args.per_device_eval_batch_size = 16
     

@@ -6,16 +6,21 @@ env/
 .env.local
 uv.lock
 CLAUDE.md
-TRAINER_PLAN.md
-BATCH_SAMPLER.md
+.claude/
 .cursorrules
 .cursor/
 
 # artifacts
+core.* 
+.coverage
 dist/
 build/
+_build/
+docs/build/
 *.egg-info/
 */__pycache__/
+.pytest_cache/
+.ruff_cache/
 *.pyo
 *.pyd
 *.pyc
@@ -26,14 +31,15 @@ outputs/
 logs/
 
 # development
+local/
+scratch/
 .idea/
 .vscode/
 *.swp
 .DS_Store
-verifiers/envs/wordle_env.py
-verifiers/envs/textarena_env.py
 
 # WIPs
+verifiers/envs/multibranch_env.py
 wip/
 old/
 tests/
@@ -42,3 +48,8 @@ log_error_state/
 old/
 tests/
 notebooks/
+
+# Incomplete environments
+environments/aime2024/
+environments/aime2025/
+environments/reverse_text_mini/

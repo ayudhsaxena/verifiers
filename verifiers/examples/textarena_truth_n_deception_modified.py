@@ -1,10 +1,10 @@
 import verifiers as vf
-from verifiers.prompts import MODIFIED_TEXTARENA_PROMPT
+from verifiers.prompts.system_prompts import MODIFIED_TEXTARENA_PROMPT
 import os
 import argparse
 from datetime import datetime
-from verifiers.parsers import XMLParser
-from verifiers.utils import load_example_dataset
+from verifiers.parsers.xml_parser import XMLParser
+from verifiers.utils.data_utils import load_example_dataset
 
 
 OUTPUT_DIR = "outputs"
@@ -46,8 +46,7 @@ def main(args):
 
     checkpoint_dir = os.path.join(OUTPUT_DIR, args.run_name)
 
-    if not os.path.exists(checkpoint_dir):
-        os.makedirs(checkpoint_dir)
+    os.makedirs(checkpoint_dir, exist_ok=True)
     args_file = os.path.join(checkpoint_dir, "args.json")
     with open(args_file, "w") as f:
         import json
@@ -64,7 +63,7 @@ def main(args):
     xml_parser = XMLParser(fields=["prediction", "think", answer_tag], answer_field=answer_tag)
         
     dataset = load_example_dataset(name=args.dataset_name, env_id=args.env_id, player_id=args.train_player_id, split='train')
-    eval_dataset = load_example_dataset(name=args.dataset_name, env_id=args.env_id, player_id=args.train_player_id, split='test')
+    eval_dataset = load_example_dataset(name=args.dataset_name, env_id=args.env_id, player_id=args.train_player_id, split='test', n=1)
     vf_env = vf.ModifiedTextArenaEnv( #type: ignore
         env_id=args.env_id,
         system_prompt=system_prompt,
@@ -120,6 +119,7 @@ def main(args):
     training_args.torch_empty_cache_steps = 50
     training_args.loss_type = "dr_grpo"
     training_args.scale_rewards = False
+    training_args.num_iterations = 2
     
     # Evaluation
     training_args.eval_strategy = "steps"

@@ -3,8 +3,8 @@ from typing import List, Dict, Any
 from copy import deepcopy
 from verifiers import RewardFunc #type: ignore
 from verifiers.envs.multiturn_env import MultiTurnEnv
-from verifiers.parsers import XMLParser
-from verifiers.rubrics import TextArenaRubric
+from verifiers.parsers.xml_parser import XMLParser
+from verifiers.rubrics.textarena_rubric import TextArenaRubric
 import textarena as ta #type: ignore
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -13,14 +13,22 @@ from typing import List, Dict, Sequence, Any, Union, Tuple, Optional
 import os
 import json
 from openai import OpenAI
+from verifiers.types import (
+    ChatCompletion,
+    ChatMessage,
+    Completion,
+    Info,
+    Messages,
+    MessageType,
+    SamplingArgs,
+    State,
+)
+
 
 class TextArenaEnv(MultiTurnEnv):
     def __init__(self,
                  system_prompt: Optional[str] = None,
                  few_shot: Optional[List[Dict[str, str]]] = None,
-                 sampling_args: Dict[str, Any] = {
-                     "stop": ["</response>"],
-                 },
                  max_steps: int = 5,
                  env_id: str = "TruthAndDeception-v0", 
                  xml_parser: XMLParser = XMLParser(fields=["reasoning", "response"]),
@@ -58,12 +66,15 @@ class TextArenaEnv(MultiTurnEnv):
         done = env.is_completed()
         return done
     
-    def rollout(self,
+    async def rollout(self,
                 client: OpenAI,
                 model: str,
-                prompt: Union[str, List[Dict[str, Any]]],
-                sampling_args: Dict[str, Any] = {},
-                **kwargs: Any) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+                prompt: Messages,
+                answer: str = "",
+                task: str = "default",
+                info: Info = {},
+                sampling_args: SamplingArgs = {},
+                **kwargs: Any) -> Tuple[Messages, State] :
         """
         Generate a multi-turn rollout with the environment (messages, state).
         """
@@ -80,6 +91,7 @@ class TextArenaEnv(MultiTurnEnv):
             "player_id": self.train_player_id,
             "messages": messages,
             "game_prompt": game_prompt,
+            "responses": [],
         } 
         completion = []
         turn = 0
@@ -91,19 +103,21 @@ class TextArenaEnv(MultiTurnEnv):
         while not is_completed:
             if self.is_completed(messages, state, **kwargs):
                 break
-            response = self.get_model_response(
+            response = await self.get_model_response(
                 prompt=messages,
                 client=client,
                 model=model,
                 sampling_args=sampling_args,
                 message_type=self.message_type
             )
-            self.simulate_train_player_step(response, state)
-            has_error = response.startswith("[ERROR]")
-            messages.append({"role": "assistant", "content": response})
-            completion.append({"role": "assistant", "content": response})
+            state["responses"].append(response)
+            assert isinstance(response, ChatCompletion), f"response : {response} is not a ChatCompletion"
+            response_str = response.choices[0].message.content or ""
+            self.simulate_train_player_step(response_str, state)
+            messages.append({"role": "assistant", "content": response_str})
+            completion.append({"role": "assistant", "content": response_str})
             turn += 1
-            if self.is_completed(messages, state, **kwargs) or turn >= self.max_turns or has_error:
+            if self.is_completed(messages, state, **kwargs) or turn >= self.max_turns:
                 is_completed = True
             else:
                 env_msg = self.simulate_env_player_step(state)

@@ -1,15 +1,24 @@
 import subprocess
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Tuple, Union
 from copy import deepcopy
 from verifiers import RewardFunc #type: ignore
-from verifiers.envs import TextArenaEnv
-from verifiers.parsers import XMLParser
-from verifiers.rubrics import ModifiedTextArenaRubric
+from verifiers.envs.textarena_env import TextArenaEnv
+from verifiers.parsers.xml_parser import XMLParser
+from verifiers.rubrics.textarena_rubric_modified import ModifiedTextArenaRubric
 import textarena as ta #type: ignore
 import time
 from concurrent.futures import ThreadPoolExecutor
 import random
-from typing import List, Dict, Sequence, Any, Union, Tuple, Optional
+from verifiers.types import (
+    ChatCompletion,
+    ChatMessage,
+    Completion,
+    Info,
+    Messages,
+    MessageType,
+    SamplingArgs,
+    State,
+)
 import os
 import json
 from openai import OpenAI #type: ignore
@@ -46,12 +55,15 @@ class ModifiedTextArenaEnv(TextArenaEnv):
         self.env_think_tag = "think"
         self.env_parser = XMLParser(fields=[self.env_answer_tag, self.env_think_tag])
 
-    def rollout(self,
+    async def rollout(self,
                 client: OpenAI,
                 model: str,
-                prompt: Union[str, List[Dict[str, Any]]],
-                sampling_args: Dict[str, Any] = {},
-                **kwargs: Any) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+                prompt: Messages,
+                answer: str = "",
+                task: str = "default",
+                info: Info = {},
+                sampling_args: SamplingArgs = {},
+                **kwargs: Any) -> Tuple[Messages, State]:
         """
         Generate a multi-turn rollout with the environment (messages, state).
         """
@@ -59,7 +71,7 @@ class ModifiedTextArenaEnv(TextArenaEnv):
         metadata = kwargs.get("metadata", None)
         is_completed = False
         state = {}
-        assert isinstance(prompt, list)
+        assert isinstance(prompt, list), f"prompt : {prompt} is not a list"
         messages = deepcopy(prompt) 
         env = self.init_env_for_prompt(messages, mode=mode, metadata=metadata)
         game_prompt = env.generate_game_prompt_for_logging(player_id=self.train_player_id)
@@ -72,6 +84,7 @@ class ModifiedTextArenaEnv(TextArenaEnv):
             "predicted_opponent_thoughts": [],
             "messages_for_logging": [],
             "opponent_has_spoken": False,
+            "responses": [],
         } 
         completion = []
         turn = 0
@@ -82,18 +95,20 @@ class ModifiedTextArenaEnv(TextArenaEnv):
         while not is_completed:
             if self.is_completed(messages, state, **kwargs):
                 break
-            response = self.get_model_response(
+            response = await self.get_model_response(
                 prompt=messages,
                 client=client,
                 model=model,
                 sampling_args=sampling_args,
                 message_type=self.message_type
             )
-            self.simulate_train_player_step(response, state, turn=turn)
-            has_error = response.startswith("[ERROR]")
-            messages.append({"role": "assistant", "content": response})
-            completion.append({"role": "assistant", "content": response})
-            if self.is_completed(messages, state, **kwargs) or (turn+1) >= self.max_turns or has_error:
+            state["responses"].append(response)
+            assert isinstance(response, ChatCompletion), f"response : {response} is not a ChatCompletion"
+            response_str = response.choices[0].message.content or ""
+            self.simulate_train_player_step(response_str, state, turn=turn)
+            messages.append({"role": "assistant", "content": response_str})
+            completion.append({"role": "assistant", "content": response_str})
+            if self.is_completed(messages, state, **kwargs) or (turn+1) >= self.max_turns:
                 is_completed = True
             else:
                 env_msg = self.simulate_env_player_step(state, turn=turn)

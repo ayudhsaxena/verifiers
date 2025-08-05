@@ -17,13 +17,24 @@ from sotopia.database import AgentProfile, EnvironmentProfile  # type: ignore
 from sotopia.database import SotopiaDimensions  # type: ignore
 
 from verifiers.envs.multiturn_env import MultiTurnEnv
-from verifiers.parsers import XMLParser
-from verifiers.rubrics import SotopiaRubric
+from verifiers.parsers.xml_parser import XMLParser
+from verifiers.rubrics.sotopia_rubric import SotopiaRubric
 import random
 import contextlib
 import io
 import json
 from sotopia.generation_utils.output_parsers import  PydanticOutputParser
+from verifiers.types import (
+    ChatCompletion,
+    ChatMessage,
+    Completion,
+    Info,
+    Messages,
+    MessageType,
+    SamplingArgs,
+    State,
+)
+
 
 
 class SotopiaEnv(MultiTurnEnv):
@@ -123,12 +134,9 @@ class SotopiaEnv(MultiTurnEnv):
         
         return env, environment_messages, train_agent, env_agent
     
-    def _get_agent_action(self, agent: LLMAgent, env_obs: Observation, state: Dict[str, Any]) -> AgentAction:
+    async def _get_agent_action(self, agent: LLMAgent, env_obs: Observation, state: Dict[str, Any]) -> AgentAction:
         """Run the agent's async action coroutine on the rollout-scoped event loop."""
-        loop = state.get("event_loop")
-        if loop is None:
-            raise RuntimeError("Event loop missing from state – it should be created at rollout start.")
-        return loop.run_until_complete(agent.aact(env_obs))  # type: ignore[arg-type]
+        return await agent.aact(env_obs)  # type: ignore[arg-type]
 
     def build_agent_action(self, raw_response: str) -> AgentAction:
         """Attempt to parse the LLM's output. If it is a JSON object with an
@@ -166,18 +174,17 @@ class SotopiaEnv(MultiTurnEnv):
         train_prompt.append({"role": "user", "content": prompt_content})
         return train_prompt
 
-    def rollout(
+    async def rollout(
         self,
         client: OpenAI,
         model: str,
-        prompt: Union[str, List[Dict[str, Any]]],
-        sampling_args: Dict[str, Any] = {},
+        prompt: Messages,
+        answer: str = "",
+        task: str = "default",
+        info: Info = {},
+        sampling_args: SamplingArgs = {},
         **kwargs,
-    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-
-        # Create a dedicated event loop for this rollout/thread and set it as current.
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+    ) -> Tuple[Messages, State]:
 
         try:
             assert isinstance(prompt, list), "Expect chat-formatted prompt"
@@ -194,14 +201,14 @@ class SotopiaEnv(MultiTurnEnv):
                 "train_agent": train_agent,
                 "env_agent": env_agent,
                 "env_background_prompt": env.background.to_natural_language(),
-                "event_loop": loop,
+                "responses": [],
             }
             completion: List[Dict[str, str]] = []
             turn = 0
 
             # If environment should start
             if self.train_player_id == 1:
-                env_player_msg = self._simulate_env_player_step(state)
+                env_player_msg = await self._simulate_env_player_step(state)
                 completion.append(env_player_msg)
                 state["messages"].append(env_player_msg)
             else:
@@ -213,16 +220,18 @@ class SotopiaEnv(MultiTurnEnv):
             while not self.is_completed([], state) and turn < self.max_turns:
 
                 # get train player response
-                raw_assistant_response = self.get_model_response(
+                response = await self.get_model_response(
                     prompt=self.get_train_player_prompt(state),
                     client=client,
                     model=model,
                     sampling_args=sampling_args,
                     message_type=self.message_type,
                 )
-
+                state["responses"].append(response)
+                assert isinstance(response, ChatCompletion), f"response : {response} is not a ChatCompletion"
+                raw_assistant_response = response.choices[0].message.content or ""
                 assistant_action = self.build_agent_action(raw_assistant_response)
-                self._simulate_train_player_step(assistant_action, state)
+                await self._simulate_train_player_step(assistant_action, state)
 
                 completion.append({"role": "assistant", "content": raw_assistant_response})
                 state["messages"].append({"role": "assistant", "content": raw_assistant_response})
@@ -230,7 +239,7 @@ class SotopiaEnv(MultiTurnEnv):
                 if self.is_completed([], state):
                     break
 
-                env_player_msg = self._simulate_env_player_step(state)
+                env_player_msg = await self._simulate_env_player_step(state)
                 completion.append(env_player_msg)
                 state["messages"].append(env_player_msg)
 
@@ -239,24 +248,11 @@ class SotopiaEnv(MultiTurnEnv):
             if "env" in state:
                 del state["env"]
 
-            # Remove event loop reference before pickling/returning
-            if "event_loop" in state:
-                del state["event_loop"]
-
             return completion, state
-
         finally:
-            # Cancel any remaining tasks and close the loop
-            pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
-            for task in pending:
-                task.cancel()
-            if pending:
-                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            pass
 
-            loop.close()
-            asyncio.set_event_loop(None)
-
-    def _simulate_train_player_step(self, assistant_action: AgentAction, state: Dict[str, Any]) -> None:
+    async def _simulate_train_player_step(self, assistant_action: AgentAction, state: Dict[str, Any]) -> None:
         env: ParallelSotopiaEnv = state["env"]
         train_name = env.agents[self.train_player_id]
         env_name = env.agents[self.env_player_id]
@@ -272,9 +268,9 @@ class SotopiaEnv(MultiTurnEnv):
                     terminated,
                     _,
                     info,
-                ) = env.step({train_name: assistant_action, env_name: env_action})
+                ) = await env.astep({train_name: assistant_action, env_name: env_action})
         else:
-            (environment_messages, rewards, terminated, _, info) = env.step({train_name: assistant_action, env_name: env_action})
+            (environment_messages, rewards, terminated, _, info) = await env.astep({train_name: assistant_action, env_name: env_action})
 
         # Use only the 'goal' dimension as reward for the train agent
         complete_rating = info[train_name].get('complete_rating', 0)
@@ -285,7 +281,7 @@ class SotopiaEnv(MultiTurnEnv):
         state["terminated"] = state["terminated"] or all(terminated.values())
         state["environment_messages"] = environment_messages
 
-    def _simulate_env_player_step(self, state: Dict[str, Any]) -> Dict[str, str]:
+    async def _simulate_env_player_step(self, state: Dict[str, Any]) -> Dict[str, str]:
         env: ParallelSotopiaEnv = state["env"]
         env_name = env.agents[self.env_player_id]
         train_name = env.agents[self.train_player_id]
@@ -298,8 +294,7 @@ class SotopiaEnv(MultiTurnEnv):
         # manually update the train agent's inbox with its last observation
         train_agent.update_inbox(train_obs)
 
-        # LLMAgent is async → block for simplicity
-        env_action = self._get_agent_action(env_agent, env_obs, state)
+        env_action = await self._get_agent_action(env_agent, env_obs, state)
 
         # now step with *only* env agent speaking
         if self.suppress_output:
@@ -310,10 +305,10 @@ class SotopiaEnv(MultiTurnEnv):
                     terminated,
                     _,
                     info,
-                ) = env.step({train_name: AgentAction(action_type="none", argument=""),
+                ) = await env.astep({train_name: AgentAction(action_type="none", argument=""),
                               env_name: env_action})
         else:
-            (environment_messages, rewards, terminated, _, info) = env.step({train_name: AgentAction(action_type="none", argument=""), env_name: env_action})
+            (environment_messages, rewards, terminated, _, info) = await env.astep({train_name: AgentAction(action_type="none", argument=""), env_name: env_action})
 
         # Use only the 'goal' dimension as reward for the train agent
         complete_rating = info[train_name].get('complete_rating', 0)

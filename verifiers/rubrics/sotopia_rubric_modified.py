@@ -1,7 +1,7 @@
 from typing import List, Dict, Any
 
-from verifiers.parsers import XMLParser
-from verifiers.rubrics import JudgeRubric
+from verifiers.parsers.xml_parser import XMLParser
+from verifiers.rubrics.judge_rubric import JudgeRubric
 
 
 SOTOPIA_JUDGE_PROMPT = """The participant is engaging in a social interaction scenario and as part of their turn, they are trying to predict the other participant's thought process. We have the ground truth of the other participant's thoughts and the participant's prediction of the other participant's thoughts. Determine if the participant's prediction of the other participant's thoughts is correct.
@@ -51,7 +51,7 @@ class ModifiedSotopiaRubric(JudgeRubric):
         in ``state["reward_sum"]``.
         """
         try:
-            return float(state.get("reward_sum", 0.0)) / 10.0
+            return float(state.get("reward_sum", 0.0))
         except Exception:
             return 0.0
         

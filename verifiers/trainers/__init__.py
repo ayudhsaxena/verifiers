@@ -1,3 +1,45 @@
-from .grpo_trainer import GRPOTrainer
+from peft import LoraConfig
 
-__all__ = ["GRPOTrainer"]
+from .grpo_config import GRPOConfig
+from .grpo_trainer import GRPOTrainer
+import os
+
+def grpo_defaults(run_name: str,
+                output_dir: str = "outputs") -> GRPOConfig:
+    return GRPOConfig(
+        output_dir= os.path.join(output_dir,run_name),
+        run_name=run_name,
+        learning_rate=1e-6,
+        lr_scheduler_type="constant_with_warmup",
+        warmup_steps=10,
+        max_steps=500,
+        bf16=True,
+        max_grad_norm=0.01,
+        num_iterations=2,
+        max_seq_len=4096,
+        max_prompt_length=1024,
+        max_completion_length=2048,
+        per_device_train_batch_size=8,
+        num_generations=8,
+        gradient_accumulation_steps=4,
+        gradient_checkpointing=True,
+        save_strategy="steps",
+        save_steps=500,
+        save_only_model=True,
+        logging_steps=1,
+        log_on_each_node=False,
+        log_completions=True,
+        report_to="wandb",
+    )
+
+
+def lora_defaults(r=8, alpha=16) -> LoraConfig:
+    return LoraConfig(
+        r=r,
+        lora_alpha=alpha,
+        target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
+        task_type="CAUSAL_LM",
+    )
+
+
+__all__ = ["GRPOConfig", "GRPOTrainer", "grpo_defaults", "lora_defaults"]

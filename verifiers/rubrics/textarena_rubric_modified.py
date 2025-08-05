@@ -1,7 +1,7 @@
 from typing import List, Dict
 from verifiers import RewardFunc #type: ignore
-from verifiers.parsers import XMLParser
-from verifiers.rubrics import JudgeRubric
+from verifiers.parsers.xml_parser import XMLParser
+from verifiers.rubrics.judge_rubric import JudgeRubric
 from typing import List, Dict, Any
 
 TEXARENA_JUDGE_PROMPT = """The player is playing a game against the opponent and as part of its turn, its trying to predict the opponent's \
