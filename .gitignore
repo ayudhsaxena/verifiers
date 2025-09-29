@@ -29,6 +29,7 @@ docs/build/
 wandb/
 outputs/
 logs/
+episode_outputs/
 
 # development
 local/

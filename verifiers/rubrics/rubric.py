@@ -94,19 +94,21 @@ class Rubric:
         )
         ans = 0.0
         merged = {**common, **kwargs}
+
+        args_to_pass = {}
         if any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values()):
-            try:
-                ans = func(**merged)
-            except Exception as e:
-                self.logger.error(f"Error calling reward function {func.__name__}: {e}")
-                ans = 0.0
+            args_to_pass = merged
         else:
-            allowed = {k: v for k, v in merged.items() if k in sig.parameters}
-            try:
-                ans = func(**allowed)
-            except Exception as e:
-                self.logger.error(f"Error calling reward function {func.__name__}: {e}")
-                ans = 0.0
+            args_to_pass = {k: v for k, v in merged.items() if k in sig.parameters}
+
+        try:
+            if inspect.iscoroutinefunction(func):
+                ans = await func(**args_to_pass)
+            else:
+                ans = func(**args_to_pass)
+        except Exception as e:
+            self.logger.error(f"Error calling reward function {func.__name__}: {e}")
+            ans = 0.0
         return ans
 
     async def score_rollout(

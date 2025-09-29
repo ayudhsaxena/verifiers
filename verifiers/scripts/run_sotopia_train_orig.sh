@@ -3,11 +3,12 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 accelerate launch \
             --num_processes=7 \
             verifiers/examples/sotopia_train.py \
             --dataset_name=sotopia \
-            --max_steps=400 \
-            --run_name=sotopia-qwen-2.5-7B-instruct-player-0 \
+            --max_steps=800 \
+            --run_name=train_rl_sotopia-qwen-2.5-7B-instruct-player-0 \
             --seed=11 \
             --resume_training_from_last_checkpoint \
-            --per_device_train_batch_size=8 \
-            --num_generations=14 \
+            --per_device_train_batch_size=12 \
+            --num_generations=12 \
             --train_player_id=0 \
             --gradient_accumulation_steps=4 \
+            --max_turns=6 \

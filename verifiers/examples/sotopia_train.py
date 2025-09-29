@@ -45,13 +45,24 @@ def main(args):
     """Main training function"""
     setup_environment()
 
-    checkpoint_dir = os.path.join(OUTPUT_DIR, args.run_name)
+    # Resolve run name early, mirroring modified script behavior
+    user_provided_run_name = args.run_name is not None
+    if args.run_name is None:
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        run_name = "sotopia_" + args.model_name.split("/")[-1].lower() + "_" + timestamp
+    else:
+        run_name = args.run_name
+    args.run_name = run_name
+
+    checkpoint_dir = os.path.join(OUTPUT_DIR, run_name)
 
     os.makedirs(checkpoint_dir, exist_ok=True)
     args_file = os.path.join(checkpoint_dir, "args.json")
     with open(args_file, "w") as f:
         import json
-        json.dump(vars(args), f, indent=4)
+        args_to_save = vars(args).copy()
+        args_to_save["saved_at"] = datetime.now().isoformat()
+        json.dump(args_to_save, f, indent=4)
     print(f"Arguments saved to {args_file}")
 
     model, tokenizer = vf.get_model_and_tokenizer(args.model_name) #type: ignore
@@ -73,37 +84,33 @@ def main(args):
         answer_tag=answer_tag,
         think_tag=think_tag,
         train_player_id=args.train_player_id,
-        max_turns=20,
+        max_turns=args.max_turns if hasattr(args, "max_turns") else 10,
         evaluator_model=args.evaluator_model,
         dataset=dataset,
         eval_dataset=eval_dataset,
+        reward_dimensions=["goal"],
+        reasoning_dimensions=["goal"],
     )
     dataset = vf_env.get_dataset()
     rubric = vf_env.get_rubric()
     eval_dataset = vf_env.get_eval_dataset()
 
     if args.resume_training_from_last_checkpoint:
-        if args.run_name is None:
+        if not user_provided_run_name:
             raise ValueError("Please provide a run name to resume training.")
         
         if os.path.exists(checkpoint_dir):
            
-            checkpoint_dir = get_latest_checkpoint(checkpoint_dir)
-            if checkpoint_dir is None:
-                print(f"No checkpoints found in {args.run_name}. Starting a new training run.")
+            latest_checkpoint_dir = get_latest_checkpoint(checkpoint_dir)
+            if latest_checkpoint_dir is None:
+                print(f"No checkpoints found in {run_name}. Starting a new training run.")
             else:
-                print(f"Resuming training from the last checkpoint: {checkpoint_dir}")
-                args.resume_from_checkpoint = checkpoint_dir
+                print(f"Resuming training from the last checkpoint: {latest_checkpoint_dir}")
+                args.resume_from_checkpoint = latest_checkpoint_dir
         else:
             print(f"No checkpoint found at {checkpoint_dir}. Starting a new training run.")
             args.resume_from_checkpoint = None
     
-
-    if args.run_name is None:
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        run_name = "sotopia_" + args.model_name.split("/")[-1].lower() + "_" + timestamp
-    else:
-        run_name = args.run_name
 
     print(f"Run name: {run_name}")
     print(f"Model name: {args.model_name}")
@@ -115,7 +122,7 @@ def main(args):
     training_args.per_device_train_batch_size = args.per_device_train_batch_size
     training_args.gradient_accumulation_steps = args.gradient_accumulation_steps
     training_args.max_steps = args.max_steps
-    training_args.save_steps = 500
+    training_args.save_steps = 400
     training_args.seed = args.seed
     training_args.torch_empty_cache_steps = 50
     # training_args.loss_type = "dr_grpo"
@@ -166,6 +173,8 @@ if __name__ == "__main__":
                         help="Number of gradient accumulation steps")
     parser.add_argument("--evaluator_model", type=str, default="gpt-4o-mini",
                         help="Model to use for LLM-based evaluation (default: gpt-4o-mini)")
+    parser.add_argument("--max_turns", type=int, default=10,
+                        help="Maximum number of turns in the environment")
     
     args = parser.parse_args()
     main(args) 

@@ -76,9 +76,6 @@ def main(args):
         system_prompt=system_prompt,
         xml_parser=xml_parser,
         answer_tag=answer_tag,
-        sampling_args={
-            "stop": [stop_tag],
-        },
         train_player_id=args.train_player_id,
         dataset=dataset,
         eval_dataset=eval_dataset,

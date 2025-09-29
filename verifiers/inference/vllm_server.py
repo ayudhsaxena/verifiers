@@ -1,6 +1,7 @@
 import asyncio
 import os
 import signal
+import json
 from argparse import Namespace
 from typing import Sequence
 
@@ -228,6 +229,111 @@ async def run_server(args: Namespace):
         # fire and forget
         await engine.collective_rpc("close_communicator")
         return {"status": "ok"}
+
+    def _load_generation_config_info():
+        """
+        Returns information about the generation configuration used by the server.
+
+        This inspects the CLI args for either a JSON file provided via
+        `--generation-config` or an inline JSON override via
+        `--override-generation-config`. The returned dict includes the
+        file path (if any), the parsed file content, the parsed override
+        content, and the merged effective configuration (override takes precedence).
+        """
+        file_path = getattr(args, "generation_config", None)
+        file_path_abs = None
+        file_config = None
+
+        if isinstance(file_path, str) and len(file_path) > 0:
+            try:
+                file_path_abs = os.path.abspath(file_path)
+                with open(file_path_abs, "r") as f:
+                    file_config = json.load(f)
+            except Exception:
+                # Swallow errors and surface None if unreadable
+                file_config = None
+
+        # Try to load model defaults from Hugging Face generation_config.json
+        hf_genconf_path = None
+        hf_genconf = None
+        try:
+            # Lazy import to avoid hard dependency at process start
+            from transformers import GenerationConfig  # type: ignore
+            try:
+                # Locate local cached file path, if available
+                from transformers.utils.hub import cached_file  # type: ignore
+                hf_genconf_path = cached_file(
+                    getattr(args, "model", None),
+                    "generation_config.json",
+                    _raise_exceptions_for_missing_entries=False,
+                    _raise_exceptions_for_connection_errors=False,
+                )
+            except Exception:
+                hf_genconf_path = None
+
+            try:
+                gc = GenerationConfig.from_pretrained(getattr(args, "model", None))
+                hf_genconf = gc.to_dict()
+            except Exception:
+                hf_genconf = None
+        except Exception:
+            hf_genconf_path = None
+            hf_genconf = None
+
+        override_raw = getattr(args, "override_generation_config", None)
+        override_config = None
+        if isinstance(override_raw, str) and len(override_raw) > 0:
+            try:
+                override_config = json.loads(override_raw)
+            except Exception:
+                override_config = None
+
+        # Merge precedence: HF model defaults -> file -> inline override
+        effective_config = {}
+        if isinstance(hf_genconf, dict):
+            effective_config.update(hf_genconf)
+        if isinstance(file_config, dict):
+            effective_config.update(file_config)
+        if isinstance(override_config, dict):
+            effective_config.update(override_config)
+
+        return {
+            "model": getattr(args, "model", None),
+            "served_model_name": getattr(args, "served_model_name", None),
+            "generation_config_file": file_path_abs,
+            "file_config": file_config,
+            "override_config": override_config,
+            "hf_generation_config_file": hf_genconf_path,
+            "hf_generation_config": hf_genconf,
+            "effective_config": effective_config,
+        }
+
+    @app.get("/generation_config")
+    async def get_generation_config():
+        """
+        Returns the server's generation configuration defaults and sources.
+
+        Response schema:
+        {
+          "model": str | null,
+          "served_model_name": str | null,
+          "generation_config_file": str | null,  # absolute path if provided
+          "file_config": dict | null,            # parsed JSON file content
+          "override_config": dict | null,        # parsed inline override
+          "hf_generation_config_file": str | null, # local cache path to generation_config.json (if present)
+          "hf_generation_config": dict | null,     # model defaults from HF GenerationConfig
+          "effective_config": dict               # file merged with override
+        }
+        """
+        return _load_generation_config_info()
+
+    # Print generation configuration info at startup for observability
+    try:
+        _config_info = _load_generation_config_info()
+        print("[vLLM] Loaded generation configuration info:")
+        print(json.dumps(_config_info, indent=2, sort_keys=True, ensure_ascii=False))
+    except Exception as e:
+        print(f"[vLLM] Failed to print generation configuration info: {e}")
 
     vllm_config = await engine.get_vllm_config()
     await init_app_state(engine, vllm_config, app.state, args)

@@ -2,13 +2,13 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 accelerate launch \
             --config-file configs/zero3.yaml \
             --num_processes=7 \
             verifiers/examples/textarena_truth_n_deception_modified.py \
-            --env_id=TruthAndDeception-v0 \
+            --env_id=DontSayIt-v0 \
             --dataset_name=textarena \
             --max_steps=400 \
-            --run_name=modified_truth-n-deception-qwen-2.5-7B-instruct-deceiver_dr_grpo_ \
+            --run_name=modified_dont-say-it-qwen-2.5-7B-instruct-player-1_dr_grpo_run______ \
             --seed=11 \
             --resume_training_from_last_checkpoint \
-            --per_device_train_batch_size=8 \
+            --per_device_train_batch_size=4 \
             --num_generations=14 \
-            --train_player_id=0 \
+            --train_player_id=1 \
             --gradient_accumulation_steps=4 \

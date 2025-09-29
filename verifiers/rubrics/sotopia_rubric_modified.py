@@ -1,4 +1,7 @@
 from typing import List, Dict, Any
+import asyncio
+import os
+import weakref
 
 from verifiers.parsers.xml_parser import XMLParser
 from verifiers.rubrics.judge_rubric import JudgeRubric
@@ -28,8 +31,9 @@ class ModifiedSotopiaRubric(JudgeRubric):
                  parser: XMLParser = XMLParser(fields=["prediction", "think", "response"]),
                  judge_parser: XMLParser = XMLParser(fields=["answer", "reason"]),
                  funcs: List = [],
-                 weights: List[float] = [],):
-        super().__init__(funcs=funcs, weights=weights, parser=parser)
+                 weights: List[float] = [],
+                 **kwargs):
+        super().__init__(funcs=funcs, weights=weights, parser=parser, **kwargs)
         self.parser = parser
         self.judge_parser = judge_parser
         self.reward_funcs = [
@@ -44,6 +48,26 @@ class ModifiedSotopiaRubric(JudgeRubric):
         ]
         self.judge_prompt = SOTOPIA_JUDGE_PROMPT
 
+        # Concurrency limit for judge API calls to avoid timeouts under heavy load
+        # Can be tuned via env var JUDGE_CONCURRENCY
+        self._judge_concurrency = int(os.getenv("JUDGE_CONCURRENCY", "32"))
+        # Per-event-loop semaphores to avoid cross-loop binding errors
+        # Weakly reference loops so we don't prevent garbage collection
+        self._judge_semaphores = weakref.WeakKeyDictionary()
+
+    def _get_judge_semaphore(self) -> asyncio.Semaphore:
+        """Return a semaphore bound to the current running event loop.
+
+        Avoids "Semaphore is bound to a different event loop" errors when this
+        rubric is used from multiple threads/loops.
+        """
+        loop = asyncio.get_running_loop()
+        semaphore = self._judge_semaphores.get(loop)
+        if semaphore is None:
+            semaphore = asyncio.Semaphore(self._judge_concurrency)
+            self._judge_semaphores[loop] = semaphore
+        return semaphore
+
     def accumulated_env_reward_func(self, state: Dict[str, Any], **_) -> float:  # noqa: D401
         """Return the sum of rewards collected for the training player.
 
@@ -51,11 +75,11 @@ class ModifiedSotopiaRubric(JudgeRubric):
         in ``state["reward_sum"]``.
         """
         try:
-            return float(state.get("reward_sum", 0.0))
+            return float(state.get("reward_sum", 0.0)) / 10.0
         except Exception:
             return 0.0
         
-    def judge_reward_func(self, state: Dict[str, Any], **kwargs) -> float:
+    async def judge_reward_func(self, state: Dict[str, Any], **kwargs) -> float:
         gt_opponent_thoughts = state.get("gt_opponent_thoughts", None)
         predicted_opponent_thoughts = state.get("predicted_opponent_thoughts", None)
         if gt_opponent_thoughts is None or predicted_opponent_thoughts is None:
@@ -75,14 +99,19 @@ class ModifiedSotopiaRubric(JudgeRubric):
             if not isinstance(gt, str) or not isinstance(pred, str):
                 raise ValueError("Ground truth and predicted opponent thoughts must be strings.")
             prompt = self.judge_prompt.format(thoughts=gt, prediction=pred)
-            judge_response = self.judge_client.chat.completions.create(
-                model=self.judge_model,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=500,
-            )
+            # Limit concurrent judge calls to reduce timeouts under load
+            async with self._get_judge_semaphore():
+                judge_response = await self.judge_client.chat.completions.create(
+                    model=self.judge_model,
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=500,
+                    timeout=600,
+                    **getattr(self, "judge_sampling_args", {}),
+                )
             judge_response = judge_response.choices[0].message.content
+            print(f"Judge Response: {judge_response}")
             answer = self.judge_parser.parse(judge_response).answer
             answer = answer if answer else judge_response
             is_correct = 'yes' in answer.lower()
@@ -99,4 +128,4 @@ class ModifiedSotopiaRubric(JudgeRubric):
         # Save the logging data in the state
         state["judge_logging_data"] = logging_string
         
-        return reward / len(gt_opponent_thoughts) 
+        return reward / len(gt_opponent_thoughts)

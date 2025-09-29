@@ -1,4 +1,6 @@
-from openai import OpenAI
+from typing import List, Optional
+
+from openai import AsyncOpenAI
 
 from verifiers.parsers.parser import Parser
 from verifiers.rubrics.rubric import Rubric
@@ -29,7 +31,7 @@ class JudgeRubric(Rubric):
         self,
         parser: Parser = Parser(),
         parallelize_scoring: bool = False,
-        judge_client: OpenAI | None = None,
+        judge_client: Optional[AsyncOpenAI] = None,
         judge_model: str = "gpt-4.1-nano",
         judge_sampling_args: dict = {},
         judge_prompt: str = DEFAULT_JUDGE_PROMPT,
@@ -39,12 +41,12 @@ class JudgeRubric(Rubric):
             parser=parser, parallelize_scoring=parallelize_scoring, **kwargs
         )
         self.parser = parser
-        self.judge_client = judge_client if judge_client is not None else OpenAI()
+        self.judge_client = judge_client or AsyncOpenAI(max_retries=5)
         self.judge_model = judge_model
         self.judge_prompt = judge_prompt
         self.judge_sampling_args = judge_sampling_args
 
-    def judge(self, prompt, completion, answer, state, **kwargs) -> str:
+    async def judge(self, prompt, completion, answer, state, **kwargs) -> str:
         if "judge_response" in state:
             return state["judge_response"]
         if isinstance(prompt, list):
@@ -55,7 +57,7 @@ class JudgeRubric(Rubric):
         judge_prompt = self.judge_prompt.format(
             question=question, answer=answer, response=response
         )
-        judge_response = self.judge_client.chat.completions.create(
+        judge_response = await self.judge_client.chat.completions.create(
             model=self.judge_model,
             messages=[{"role": "user", "content": judge_prompt}],
             **self.judge_sampling_args,

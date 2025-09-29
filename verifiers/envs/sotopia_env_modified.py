@@ -7,8 +7,9 @@ from copy import deepcopy
 from sympy import principal_branch
 from torch.onnx.symbolic_opset9 import tanhshrink
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+import re
 
-from openai import OpenAI                                   # LLM client used by verifiers
+from openai import OpenAI, AsyncOpenAI                                   # LLM client used by verifiers
 # External Sotopia imports – add `type: ignore` to silence static analysers when
 # Sotopia is not installed in the current environment.
 from sotopia.envs.parallel import ParallelSotopiaEnv  # type: ignore
@@ -63,6 +64,9 @@ class ModifiedSotopiaEnv(SotopiaEnv):
         prediction_tag: str = "prediction",
         suppress_output: bool = True,
         parser: XMLParser = XMLParser(fields=["prediction", "think", "response"]),
+        # New: control which evaluation dimensions contribute to reward and which to log reasoning for
+        reward_dimensions: Optional[List[str]] = None,
+        reasoning_dimensions: Optional[List[str]] = None,
         **kwargs,
     ):
         super().__init__(
@@ -84,7 +88,51 @@ class ModifiedSotopiaEnv(SotopiaEnv):
         self.env_think_tag = "think"
         self.env_parser = XMLParser(fields=[self.env_answer_tag, self.env_think_tag])
         # Reward rubric specific to Modified Sotopia
-        self.rubric = ModifiedSotopiaRubric(parser=parser)
+        self.rubric = ModifiedSotopiaRubric(parser=parser, judge_client=AsyncOpenAI())
+        # Default to goal-only, but allow flexible configuration
+        self.reward_dimensions = reward_dimensions if reward_dimensions is not None else ["goal"]
+        self.reasoning_dimensions = reasoning_dimensions if reasoning_dimensions is not None else list(self.reward_dimensions)
+
+    def _extract_dimensions_reasoning_from_comments(self, comments: str, train_player_id: int, target_dimensions: List[str]) -> str:
+        """Extract reasoning lines for the specified dimensions for the training player.
+
+        The evaluator comments string looks like:
+        "Environment comments: ...\nAgent 1 comments:\n<dim>: <reason>\n...\nAgent 2 comments:\n...".
+        We locate the appropriate agent section, then pull lines matching
+        any of the provided `target_dimensions` (case-insensitive, exact key before ':').
+        """
+        if not isinstance(comments, str) or not comments:
+            return ""
+
+        target_agent_header = f"Agent {1 if train_player_id == 0 else 2} comments:"
+
+        # Locate the start of the target agent section
+        start_index = comments.find(target_agent_header)
+        if start_index == -1:
+            # Fallback: try to extract any matching lines across the entire comments
+            collected: List[str] = []
+            for dim in target_dimensions:
+                pattern = rf"(?im)^\s*{re.escape(dim)}:\s*(.+)$"
+                collected.extend(re.findall(pattern, comments))
+            # If none are found, return empty string instead of full comments
+            return " | ".join([line.strip() for line in collected]) if collected else ""
+
+        section = comments[start_index + len(target_agent_header):]
+
+        # End of section is the next agent header or end of string
+        next_header_match = re.search(r"(?m)^Agent \s*[12]\s*comments:\s*$", section)
+        agent_section = section[: next_header_match.start()] if next_header_match else section
+
+        # Extract matching dimension lines within the agent section
+        collected: List[str] = []
+        for dim in target_dimensions:
+            pattern = rf"(?im)^\s*{re.escape(dim)}:\s*(.+)$"
+            collected.extend(f"{dim}: " + line.strip() for line in re.findall(pattern, agent_section))
+        if collected:
+            return " | ".join([line.strip() for line in collected])
+
+        # If no matching lines are found within the agent section, return empty string
+        return ""
 
     def _init_sotopia_env(self, prompt: List[Dict[str, Any]]) -> Tuple[ParallelSotopiaEnv, Dict[str, Any], LLMAgent, LLMAgent]:
         """
@@ -196,6 +244,8 @@ class ModifiedSotopiaEnv(SotopiaEnv):
                 "predicted_opponent_thoughts": [],
                 "opponent_has_spoken": False,
                 "responses": [],
+                "dimension_reasoning_data": [],
+                "final_dim_scores": {},
             }
             completion: List[Dict[str, str]] = []
             turn = 0
@@ -267,12 +317,26 @@ class ModifiedSotopiaEnv(SotopiaEnv):
         else:
             (environment_messages, rewards, terminated, _, info) = await env.astep({train_name: assistant_action, env_name: env_action})
 
-        # Use only the 'goal' dimension as reward for the train agent
+        # Aggregate reward only from configured dimensions
         complete_rating = info[train_name].get('complete_rating', 0)
-        goal_score = 0
-        if isinstance(complete_rating, tuple) and isinstance(complete_rating[1], dict) and "goal" in complete_rating[1]:
-            goal_score = complete_rating[1]["goal"] 
-        state["reward_sum"] += goal_score
+        step_reward = 0.0
+        if isinstance(complete_rating, tuple) and isinstance(complete_rating[1], dict):
+            dim_scores: Dict[str, Any] = complete_rating[1]
+            # Persist the latest scores dict for end-of-episode logging
+            state["final_dim_scores"] = {k: float(v) for k, v in dim_scores.items() if isinstance(v, (int, float))}
+            for dim in self.reward_dimensions:
+                if dim in dim_scores and isinstance(dim_scores[dim], (int, float)):
+                    step_reward += float(dim_scores[dim])
+        state["reward_sum"] += step_reward
+
+        # Capture evaluator reasoning only for configured dimensions (if available)
+        comments = info[train_name].get("comments", None)
+        if comments:
+            # Extract a combined reasoning string for configured dimensions
+            dim_reason = self._extract_dimensions_reasoning_from_comments(
+                comments, self.train_player_id, self.reasoning_dimensions
+            )
+            state["dimension_reasoning_data"].append(dim_reason)
 
         state["terminated"] = state["terminated"] or all(terminated.values())
         state["environment_messages"] = environment_messages
@@ -311,12 +375,24 @@ class ModifiedSotopiaEnv(SotopiaEnv):
         else:
             (environment_messages, rewards, terminated, _, info) = await env.astep({train_name: AgentAction(action_type="none", argument=""), env_name: env_action})
 
-        # Use only the 'goal' dimension as reward for the train agent
+        # Aggregate reward only from configured dimensions
         complete_rating = info[train_name].get('complete_rating', 0)
-        goal_score = 0
-        if isinstance(complete_rating, tuple) and isinstance(complete_rating[1], dict) and "goal" in complete_rating[1]:
-            goal_score = complete_rating[1]["goal"]
-        state["reward_sum"] += goal_score
+        step_reward = 0.0
+        if isinstance(complete_rating, tuple) and isinstance(complete_rating[1], dict):
+            dim_scores: Dict[str, Any] = complete_rating[1]
+            state["final_dim_scores"] = {k: float(v) for k, v in dim_scores.items() if isinstance(v, (int, float))}
+            for dim in self.reward_dimensions:
+                if dim in dim_scores and isinstance(dim_scores[dim], (int, float)):
+                    step_reward += float(dim_scores[dim])
+        state["reward_sum"] += step_reward
+
+        # Capture evaluator reasoning only for configured dimensions (if available)
+        comments = info[train_name].get("comments", None    )
+        if comments:
+            dim_reason = self._extract_dimensions_reasoning_from_comments(
+                comments, self.train_player_id, self.reasoning_dimensions
+            )
+            state["dimension_reasoning_data"].append(dim_reason)
 
         state["terminated"] = state["terminated"] or all(terminated.values())
         state["environment_messages"] = environment_messages    
@@ -332,17 +408,69 @@ class ModifiedSotopiaEnv(SotopiaEnv):
         return {"role": "user", "content": raw_response}
 
     def get_logging_data(self, all_prompts: List[Union[str, Dict[str, Any], List[Dict[str, Any]]]], all_states: List[Dict[str, Any]]) -> Dict[str, Any]:
-        updated_prompts = []
-        judge_logging_data = []
-        
+        updated_prompts: List[str] = []
+        judge_logging_data: List[str] = []
+        dimension_reasoning_logs: List[str] = []
+
         for state in all_states:
-            env_background_prompt = state.get("env_background_prompt", "") # type: ignore
+            env_background_prompt = state.get("env_background_prompt", "")  # type: ignore
             updated_prompts.append(env_background_prompt)
+
             # Retrieve judge logging data from state
-            judge_data = state.get("judge_logging_data", "No judge logging data available") # type: ignore
-            judge_logging_data.append(judge_data)
-        
-        return {"updated_prompts": updated_prompts, "judge_logging_data": judge_logging_data}
+            judge_data = state.get("judge_logging_data", "No judge logging data available")  # type: ignore
+
+            # Retrieve accumulated reasoning strings for configured dimensions
+            reasons = state.get("dimension_reasoning_data", [])  # type: ignore
+            if isinstance(reasons, list):
+                # Join per-turn reasons into a single string
+                dim_reasoning = "\n".join([str(r) for r in reasons if r])
+            else:
+                dim_reasoning = str(reasons) if reasons else ""
+
+            # Append scores inline to the flat reasoning text if final scores are available
+            final_scores: Dict[str, float] = state.get("final_dim_scores", {})  # type: ignore
+            if dim_reasoning and isinstance(final_scores, dict) and final_scores:
+                scored_text = dim_reasoning
+                for dim in self.reasoning_dimensions:
+                    if dim in final_scores:
+                        scored_text = re.sub(
+                            rf"(?im)(^|\s){re.escape(dim)}\s*:",
+                            lambda m, d=dim: f"{m.group(1)}{d} [{final_scores[d]:.3f}]:",
+                            scored_text,
+                        )
+                dim_reasoning = scored_text
+
+            # Save standalone reasoning for configured dimensions
+            dimension_reasoning_logs.append(dim_reasoning)
+
+            # Build per-episode flat string with appended scores using the final complete_rating if available
+            # We source scores at episode end where they become non-null in the info tuple.
+            final_scores: Dict[str, float] = {}
+            # Best-effort: try to reconstruct from last available comments via evaluator, else leave blank
+            # Scores will be appended later in the combined output when available in the trainer context.
+
+            # Merge into judge logging for visibility in existing logging pipeline
+            if dim_reasoning:
+                dims_label = ", ".join(self.reasoning_dimensions)
+                # Append scores from final_dim_scores if available
+                scores_suffix = ""
+                final_scores: Dict[str, float] = state.get("final_dim_scores", {})  # type: ignore
+                if isinstance(final_scores, dict) and final_scores:
+                    scored_dims = [
+                        f"{dim} [{final_scores[dim]:.3f}]" if dim in final_scores else dim
+                        for dim in self.reasoning_dimensions
+                    ]
+                    dims_label = ", ".join(scored_dims)
+                combined = f"{judge_data}\n Final Reward reasoning [{dims_label}]:\n{dim_reasoning}"
+            else:
+                combined = judge_data
+            judge_logging_data.append(combined)
+
+        return {
+            "updated_prompts": updated_prompts,
+            "judge_logging_data": judge_logging_data,
+            "dimension_reasoning_data": dimension_reasoning_logs,
+        }
 
     def env_response(
         self,

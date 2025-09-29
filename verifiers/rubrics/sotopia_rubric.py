@@ -48,11 +48,11 @@ class SotopiaRubric(Rubric):
         in ``state["reward_sum"]``.
         """
         try:
-            return float(state.get("reward_sum", 0.0))*10
+            return float(state.get("reward_sum", 0.0)) / 10.0
         except Exception:
             return 0.0 
     
     def format_reward_func(self, completion: List[ChatMessage], **_) -> float:  # noqa: D401
         """Return the reward for the formatting of the output.
         """
-        return self.parser.get_format_reward_func()(completion)*100
+        return self.parser.get_format_reward_func()(completion)
