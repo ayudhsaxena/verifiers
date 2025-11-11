@@ -31,7 +31,7 @@ try:
 except ImportError:
     # Fallback for when sotopia is not installed
     PydanticOutputParser = None
-
+from sotopia.generation_utils.enums import MentalStateGeneration
 from verifiers.types import (
     ChatCompletion,
     ChatMessage,
@@ -54,6 +54,7 @@ class ModifiedSotopiaEnv(SotopiaEnv):
         train_player_id: int = 0,                                # 0 or 1
         evaluator: Optional[RuleBasedTerminatedEvaluator] = None,
         evaluator_model: str = "gpt-4o-mini",                    # Model for LLM-based evaluation
+        environment_model: str = "gpt-4o-mini",  # Model for environment agent
         # -- Verifiers plumbing ­-­
         system_prompt: Optional[str] = None,
         few_shot: Optional[List[Dict[str, str]]] = None,
@@ -87,6 +88,7 @@ class ModifiedSotopiaEnv(SotopiaEnv):
         self.env_answer_tag = "response"
         self.env_think_tag = "think"
         self.env_parser = XMLParser(fields=[self.env_answer_tag, self.env_think_tag])
+        self.environment_model = environment_model
         # Reward rubric specific to Modified Sotopia
         self.rubric = ModifiedSotopiaRubric(parser=parser, judge_client=AsyncOpenAI())
         # Default to goal-only, but allow flexible configuration
@@ -149,7 +151,7 @@ class ModifiedSotopiaEnv(SotopiaEnv):
         )
 
         train_agent = LLMAgent(model_name="dummy", uuid_str=agent1_pk)
-        env_agent = LLMAgent(model_name="gpt-4o-mini", uuid_str=agent2_pk)
+        env_agent = LLMAgent(model_name=self.environment_model, uuid_str=agent2_pk, mental_state_generation=MentalStateGeneration.ZEROTH_ORDER_MENTAL_STATE, mental_state_window=5)
         
         agents = Agents(
             {
@@ -179,7 +181,7 @@ class ModifiedSotopiaEnv(SotopiaEnv):
     
     async def _get_agent_action(self, agent: LLMAgent, env_obs: Observation) -> tuple[AgentAction, str]:
         """Run the agent's async action coroutine."""
-        return await agent.aact(env_obs, use_prediction=True)
+        return await agent.aact(env_obs)
 
 
 

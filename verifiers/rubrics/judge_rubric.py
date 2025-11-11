@@ -1,4 +1,5 @@
 from typing import List, Optional
+import os
 
 from openai import AsyncOpenAI
 
@@ -41,8 +42,17 @@ class JudgeRubric(Rubric):
             parser=parser, parallelize_scoring=parallelize_scoring, **kwargs
         )
         self.parser = parser
-        self.judge_client = judge_client or AsyncOpenAI(max_retries=5)
-        self.judge_model = judge_model
+        # Allow routing judge calls to a vLLM/OpenAI-compatible endpoint via env vars.
+        # Uses OPENAI_BASE_URL/OPENAI_API_KEY if provided (standard for OpenAI SDK),
+        # falling back to JUDGE_BASE_URL/JUDGE_API_KEY. vLLM typically accepts any API key.
+        if judge_client is not None:
+            self.judge_client = judge_client
+        else:
+            base_url = os.getenv("OPENAI_BASE_URL") or os.getenv("JUDGE_BASE_URL")
+            api_key = os.getenv("OPENAI_API_KEY") or os.getenv("JUDGE_API_KEY") or "EMPTY"
+            self.judge_client = AsyncOpenAI(base_url=base_url, api_key=api_key, max_retries=5)
+        # Allow overriding judge model via env var for vLLM served model names
+        self.judge_model = os.getenv("JUDGE_MODEL", judge_model)
         self.judge_prompt = judge_prompt
         self.judge_sampling_args = judge_sampling_args
 

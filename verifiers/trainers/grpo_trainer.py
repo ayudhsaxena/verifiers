@@ -527,6 +527,8 @@ class GRPOTrainer(Trainer):
                 "timeout": args.async_generation_timeout,
             },
         }
+        # Optional served alias for API calls
+        self.served_model_name: Optional[str] = getattr(args, "served_model_name", None)
 
         # vLLM client for weight syncing only; only import if used
         from verifiers.inference.vllm_client import VLLMClient
@@ -578,7 +580,7 @@ class GRPOTrainer(Trainer):
         self.async_generator = AsyncBatchGenerator(
             env=self.env,
             client_config=self.client_config,
-            model_name=self._get_model_name(),
+            model_name=self._get_served_model_name(),
             sampling_args=self._get_sampling_args(),
             num_batches_ahead=self.num_batches_ahead,
             max_queue_size=args.async_max_queue_size,
@@ -857,8 +859,12 @@ class GRPOTrainer(Trainer):
         return args
 
     def _get_model_name(self) -> str:
-        """Get model name for Environment generation."""
+        """Get the HF model identifier for the train policy."""
         return self.model.config._name_or_path  # type: ignore
+
+    def _get_served_model_name(self) -> str:
+        """Get model identifier used for vLLM OpenAI API requests (served alias if provided)."""
+        return self.served_model_name or self.model.config._name_or_path  # type: ignore
 
     def _ids_to_tensors(
         self,

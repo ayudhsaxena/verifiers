@@ -89,6 +89,7 @@ def main(args):
         train_player_id=args.train_player_id,
         max_turns=args.max_turns,
         evaluator_model=args.evaluator_model,
+        environment_model=args.environment_model,
         dataset=dataset,
         eval_dataset=eval_dataset,
         reward_dimensions=["goal"],
@@ -129,9 +130,15 @@ def main(args):
     training_args.torch_empty_cache_steps = 5
     training_args.max_completion_length = 4096
     training_args.num_iterations = args.num_iterations
+    # training_args.num_batches_ahead = 2
+    training_args.max_tokens = 512
     # vLLM server connection parameters
     training_args.vllm_server_host = args.vllm_server_host
     training_args.vllm_server_port = args.vllm_server_port
+    # Pass served alias (used only for OpenAI API calls in the async generator)
+    if getattr(args, "served_model_name", None):
+        training_args.served_model_name = args.served_model_name
+        print(f"Using served model name for API requests: {args.served_model_name}")
     # training_args.loss_type = "dr_grpo"
     # training_args.scale_rewards = False
     
@@ -180,6 +187,8 @@ if __name__ == "__main__":
                         help="Number of gradient accumulation steps")
     parser.add_argument("--evaluator_model", type=str, default="gpt-4o-mini",
                         help="Model to use for LLM-based evaluation (default: gpt-4o-mini)")
+    parser.add_argument("--environment_model", type=str, default="custom/qwen_base_model@http://localhost:8000/v1",
+                        help="Model to use for the environment agent (default: custom/qwen_base_model@http://localhost:8000/v1)")
     parser.add_argument("--max_turns", type=int, default=10,
                         help="Maximum number of turns in the environment")
     # vLLM server parameters
@@ -189,6 +198,8 @@ if __name__ == "__main__":
                         help="Port of the vLLM server to connect to (default: 8000)")
     parser.add_argument("--num_iterations", type=int, default=2,
                         help="Number of iterations for the trainer")
+    parser.add_argument("--served_model_name", type=str, default=None,
+                        help="Served model alias exposed by vLLM; if set, overrides model id used in API calls.")
     
     args = parser.parse_args()
     main(args) 

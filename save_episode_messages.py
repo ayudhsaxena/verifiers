@@ -451,11 +451,11 @@ def main():
         "01H7VFHN7A1ZX5KSMT2YN9RXC4",
     ]
     # Example tag and models - replace with your actual values
-    tag = "qwen_base_model_vs_qwen_2.5_7b_instruct_sotopia_hard_20_turns_mental_window_2_turns"
+    tag = "gpt-4o-mini_vs_gpt-4o-mini_sotopia_hard_20_turns_mental_window_2_turns"
     models = [
         "custom/env_model@http://localhost:8020/v1",
-        "custom/qwen_base_model@http://localhost:8000/v1",
-        "custom/opp_model@http://localhost:8010/v1",
+        "gpt-4o-mini",
+        "gpt-4o-mini",
     ]
     
     if not env_ids:
