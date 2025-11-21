@@ -2,7 +2,7 @@ from typing import List, Dict, Any
 import asyncio
 import os
 import weakref
-
+import logging
 from verifiers.parsers.xml_parser import XMLParser
 from verifiers.rubrics.judge_rubric import JudgeRubric
 
@@ -32,20 +32,23 @@ class ModifiedSotopiaRubric(JudgeRubric):
                  judge_parser: XMLParser = XMLParser(fields=["answer", "reason"]),
                  funcs: List = [],
                  weights: List[float] = [],
+                 include_judge_reward: bool = True,
                  **kwargs):
         super().__init__(funcs=funcs, weights=weights, parser=parser, **kwargs)
         self.parser = parser
         self.judge_parser = judge_parser
+        # Build rewards conditionally to enable ablations between outcome (env) and process (judge) rewards
         self.reward_funcs = [
             self.parser.get_format_reward_func(),
             self.accumulated_env_reward_func,
-            self.judge_reward_func
         ]
         self.reward_weights = [
             0.2,
             1.0,
-            1.0,
         ]
+        if include_judge_reward:
+            self.reward_funcs.append(self.judge_reward_func)
+            self.reward_weights.append(0.0)
         self.judge_prompt = SOTOPIA_JUDGE_PROMPT
 
         # Concurrency limit for judge API calls to avoid timeouts under heavy load
@@ -54,6 +57,7 @@ class ModifiedSotopiaRubric(JudgeRubric):
         # Per-event-loop semaphores to avoid cross-loop binding errors
         # Weakly reference loops so we don't prevent garbage collection
         self._judge_semaphores = weakref.WeakKeyDictionary()
+        self.logger = logging.getLogger(__name__)
 
     def _get_judge_semaphore(self) -> asyncio.Semaphore:
         """Return a semaphore bound to the current running event loop.
@@ -75,8 +79,17 @@ class ModifiedSotopiaRubric(JudgeRubric):
         in ``state["reward_sum"]``.
         """
         try:
-            return float(state.get("reward_sum", 0.0)) / 10.0
-        except Exception:
+            reward_sum = float(state.get("reward_sum", 0.0))/10.0
+            self.logger.info(f"Reward sum: {reward_sum}")
+            if reward_sum <= 0.7:
+                return 0.0
+            elif reward_sum < 0.9:
+                return 0.5
+            else:
+                return 1.0
+            # return float(state.get("reward_sum", 0.0)) / 10.0
+        except Exception as e:
+            print(f"Error calculating accumulated environment reward: {e}")
             return 0.0
         
     async def judge_reward_func(self, state: Dict[str, Any], **kwargs) -> float:
@@ -94,6 +107,7 @@ class ModifiedSotopiaRubric(JudgeRubric):
 
         reward = 0.0
         logging_parts = []
+        step_rewards: list[float] = []
         
         for i, (gt, pred) in enumerate(zip(gt_opponent_thoughts, predicted_opponent_thoughts)):
             if not isinstance(gt, str) or not isinstance(pred, str):
@@ -117,6 +131,7 @@ class ModifiedSotopiaRubric(JudgeRubric):
             is_correct = 'yes' in answer.lower()
             if is_correct:
                 reward += 1.0
+            step_rewards.append(1.0 if is_correct else 0.0)
             
             # Create logging part for this comparison
             logging_part = f"Comparison {i+1}:\nGT Thought: {gt}\nPredicted Thought: {pred}\nJudge Response: {judge_response}\nCorrect: {is_correct}\n"
@@ -127,5 +142,7 @@ class ModifiedSotopiaRubric(JudgeRubric):
         
         # Save the logging data in the state
         state["judge_logging_data"] = logging_string
+        # Save per-step rewards for process supervision consumers
+        state["step_rewards"] = step_rewards
         
         return reward / len(gt_opponent_thoughts)

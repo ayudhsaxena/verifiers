@@ -68,6 +68,7 @@ class ModifiedSotopiaEnv(SotopiaEnv):
         # New: control which evaluation dimensions contribute to reward and which to log reasoning for
         reward_dimensions: Optional[List[str]] = None,
         reasoning_dimensions: Optional[List[str]] = None,
+        include_judge_reward: bool = True,
         **kwargs,
     ):
         super().__init__(
@@ -87,10 +88,10 @@ class ModifiedSotopiaEnv(SotopiaEnv):
         self.prediction_tag = prediction_tag
         self.env_answer_tag = "response"
         self.env_think_tag = "think"
-        self.env_parser = XMLParser(fields=[self.env_answer_tag, self.env_think_tag])
+        self.env_parser = XMLParser(fields=[self.env_think_tag, self.env_answer_tag])
         self.environment_model = environment_model
         # Reward rubric specific to Modified Sotopia
-        self.rubric = ModifiedSotopiaRubric(parser=parser, judge_client=AsyncOpenAI())
+        self.rubric = ModifiedSotopiaRubric(parser=parser, judge_client=AsyncOpenAI(), include_judge_reward=include_judge_reward)
         # Default to goal-only, but allow flexible configuration
         self.reward_dimensions = reward_dimensions if reward_dimensions is not None else ["goal"]
         self.reasoning_dimensions = reasoning_dimensions if reasoning_dimensions is not None else list(self.reward_dimensions)
@@ -150,7 +151,7 @@ class ModifiedSotopiaEnv(SotopiaEnv):
             terminal_evaluators=self._terminal_evaluators,
         )
 
-        train_agent = LLMAgent(model_name="dummy", uuid_str=agent1_pk)
+        train_agent = LLMAgent(model_name="dummy", uuid_str=agent1_pk, mental_state_generation=MentalStateGeneration.FIRST_ORDER_MENTAL_STATE, mental_state_window=5)
         env_agent = LLMAgent(model_name=self.environment_model, uuid_str=agent2_pk, mental_state_generation=MentalStateGeneration.ZEROTH_ORDER_MENTAL_STATE, mental_state_window=5)
         
         agents = Agents(
@@ -276,7 +277,7 @@ class ModifiedSotopiaEnv(SotopiaEnv):
                 assert isinstance(response, ChatCompletion), f"response : {response} is not a ChatCompletion"
                 raw_assistant_response = response.choices[0].message.content or ""
                 assistant_action = self.build_agent_action(raw_assistant_response, state)
-                await self._simulate_train_player_step(assistant_action, state)
+                await self._simulate_train_player_step(assistant_action, state, raw_assistant_response)
 
                 completion.append({"role": "assistant", "content": raw_assistant_response})
                 state["messages"].append({"role": "assistant", "content": raw_assistant_response})
@@ -299,13 +300,19 @@ class ModifiedSotopiaEnv(SotopiaEnv):
         finally:
             pass
 
-    async def _simulate_train_player_step(self, assistant_action: AgentAction, state: Dict[str, Any]) -> None:
+    async def _simulate_train_player_step(self, assistant_action: AgentAction, state: Dict[str, Any], raw_assistant_response: str) -> None:
         env: ParallelSotopiaEnv = state["env"]
         train_name = env.agents[self.train_player_id]
         env_name = env.agents[self.env_player_id]
 
         # environment player does nothing this sub-turn
         env_action = AgentAction(action_type="none", argument="")
+
+        # Prepare agent_messages_with_mental_state for observation creation
+        agent_messages_with_mental_state = {
+            train_name: raw_assistant_response,
+            env_name: ""  # env agent is doing "none", so empty string
+        }
 
         if self.suppress_output:
             with contextlib.redirect_stdout(io.StringIO()):
@@ -315,9 +322,9 @@ class ModifiedSotopiaEnv(SotopiaEnv):
                     terminated,
                     _,
                     info,
-                ) = await env.astep({train_name: assistant_action, env_name: env_action})
+                ) = await env.astep({train_name: assistant_action, env_name: env_action}, agent_messages_with_mental_state=agent_messages_with_mental_state)
         else:
-            (environment_messages, rewards, terminated, _, info) = await env.astep({train_name: assistant_action, env_name: env_action})
+            (environment_messages, rewards, terminated, _, info) = await env.astep({train_name: assistant_action, env_name: env_action}, agent_messages_with_mental_state=agent_messages_with_mental_state)
 
         # Aggregate reward only from configured dimensions
         complete_rating = info[train_name].get('complete_rating', 0)
@@ -359,9 +366,28 @@ class ModifiedSotopiaEnv(SotopiaEnv):
         train_agent.update_inbox(train_obs)
 
         # LLMAgent is async → block for simplicity
-        env_action, think = await self._get_agent_action(env_agent, env_obs)
+        env_action, env_raw_response = await self._get_agent_action(env_agent, env_obs)
+        
+        # Extract think from the raw response for logging
+        parsed_text = self.env_parser.parse(env_raw_response)
+        think = parsed_text.think if hasattr(parsed_text, 'think') and parsed_text.think is not None else ""
+        if not think:
+            # Fallback: try to extract think tag manually
+            split_response = env_raw_response.split(f"<{self.env_answer_tag}>")
+            if len(split_response) > 1:
+                think = split_response[0]
+            else:
+                think = env_raw_response
+        
         state['gt_opponent_thoughts'].append(think)
         state['opponent_has_spoken'] = True
+
+        # Use the raw response directly for agent_messages_with_mental_state
+        # The env agent uses ZEROTH_ORDER_MENTAL_STATE, so it has think and response tags
+        agent_messages_with_mental_state = {
+            train_name: "",  # train agent is doing "none", so empty string
+            env_name: env_raw_response
+        }
 
         # now step with *only* env agent speaking
         if self.suppress_output:
@@ -373,9 +399,9 @@ class ModifiedSotopiaEnv(SotopiaEnv):
                     _,
                     info,
                 ) = await env.astep({train_name: AgentAction(action_type="none", argument=""),
-                              env_name: env_action})
+                              env_name: env_action}, agent_messages_with_mental_state=agent_messages_with_mental_state)
         else:
-            (environment_messages, rewards, terminated, _, info) = await env.astep({train_name: AgentAction(action_type="none", argument=""), env_name: env_action})
+            (environment_messages, rewards, terminated, _, info) = await env.astep({train_name: AgentAction(action_type="none", argument=""), env_name: env_action}, agent_messages_with_mental_state=agent_messages_with_mental_state)
 
         # Aggregate reward only from configured dimensions
         complete_rating = info[train_name].get('complete_rating', 0)
@@ -404,10 +430,8 @@ class ModifiedSotopiaEnv(SotopiaEnv):
         train_agent.update_inbox(train_obs)
         env_agent.update_inbox(env_obs)
 
-
-        raw_response = f"<{self.env_think_tag}>{think}</{self.env_think_tag}><{self.env_answer_tag}>{env_action.argument}</{self.env_answer_tag}>"
-        # convert to chat message
-        return {"role": "user", "content": raw_response}
+        # convert to chat message (reuse env_raw_response that was created earlier)
+        return {"role": "user", "content": env_raw_response}
 
     def get_logging_data(self, all_prompts: List[Union[str, Dict[str, Any], List[Dict[str, Any]]]], all_states: List[Dict[str, Any]]) -> Dict[str, Any]:
         updated_prompts: List[str] = []

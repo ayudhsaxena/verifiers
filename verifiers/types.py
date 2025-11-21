@@ -90,3 +90,9 @@ class ProcessedOutputs(BaseModel):
     completion_logprobs: List[List[float]]
     rewards: List[float]
     states: List[State]
+    # Optional per-step process supervision metadata
+    # step_end_indices[i] contains the (0-based, inclusive) token index within the i-th completion
+    # that marks the end of each step. Length equals len(step_rewards[i]).
+    step_end_indices: List[List[int]] = []
+    # step_rewards[i] contains raw per-step rewards (before normalization) for the i-th completion.
+    step_rewards: List[List[float]] = []

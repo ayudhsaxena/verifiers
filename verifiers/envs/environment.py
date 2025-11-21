@@ -583,6 +583,8 @@ Model copies with swapped templates are available here: https://huggingface.co/c
         all_completion_masks = []
         all_completion_logprobs = []
         all_rewards = []
+        all_step_end_indices = []
+        all_step_rewards = []
         for i, (prompt, completion, state, reward) in enumerate(
             zip(prompts, completions, states, rewards)
         ):
@@ -636,6 +638,9 @@ Model copies with swapped templates are available here: https://huggingface.co/c
             completion_logprobs=all_completion_logprobs,
             rewards=all_rewards,
             states=states,
+            # Thread through optional process supervision details if present on state
+            step_end_indices=[s.get("step_end_indices", []) for s in states],
+            step_rewards=[s.get("step_rewards", []) for s in states],
         )
 
     def parse_chat_completion_logprobs(
@@ -786,6 +791,8 @@ Model copies with swapped templates are available here: https://huggingface.co/c
         all_completion_masks = []
         all_completion_logprobs = []
         all_rewards = []
+        all_step_end_indices = []
+        all_step_rewards = []
         for i, (prompt, completion, state, reward) in enumerate(
             zip(prompts, completions, states, rewards)
         ):
@@ -839,6 +846,29 @@ Model copies with swapped templates are available here: https://huggingface.co/c
                 all_rewards.append(0)
             else:
                 all_rewards.append(reward)
+            # Compute per-step end indices based on assistant turns within completion
+            step_end_indices: list[int] = []
+            try:
+                messages_consumed = list(prompt)
+                tokens_so_far = 0
+                for msg in completion:
+                    token_prefix = processing_class.apply_chat_template(  # type: ignore
+                        conversation=messages_consumed
+                    )
+                    token_with_msg = processing_class.apply_chat_template(  # type: ignore
+                        conversation=messages_consumed + [msg]
+                    )
+                    delta = len(token_with_msg) - len(token_prefix)
+                    tokens_so_far += delta
+                    if isinstance(msg, dict) and msg.get("role") == "assistant":
+                        step_end_indices.append(max(0, tokens_so_far - 1))
+                    messages_consumed.append(msg)
+            except Exception as e:
+                self.logger.error(f"Error computing step end indices: {e}")
+                step_end_indices = []
+            all_step_end_indices.append(step_end_indices)
+            # Collect per-step rewards from state if present; may be empty
+            all_step_rewards.append(state.get("step_rewards", []))
         return ProcessedOutputs(
             prompt_ids=all_prompt_ids,
             prompt_mask=all_prompt_masks,
@@ -847,6 +877,8 @@ Model copies with swapped templates are available here: https://huggingface.co/c
             completion_logprobs=all_completion_logprobs,
             rewards=all_rewards,
             states=states,
+            step_end_indices=all_step_end_indices,
+            step_rewards=all_step_rewards,
         )
 
     # Evaluation and dataset generation

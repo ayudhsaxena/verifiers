@@ -1044,7 +1044,6 @@ class GRPOTrainer(Trainer):
             broadcast_object_list(next_batch_id_list, from_process=0)
             self._next_batch_id = next_batch_id_list[0]
             self.accelerator.wait_for_everyone()
-
             # Now retrieve the batch we need for this step
             if self.accelerator.is_main_process:
                 # Get batch result
@@ -1062,31 +1061,89 @@ class GRPOTrainer(Trainer):
                     "completions": batch_result.completions,
                     "prompts": batch_result.prompts,
                     'states': processed_results.states,
+                    # Optional process-supervision fields
+                    "step_end_indices": getattr(processed_results, "step_end_indices", []),
+                    "step_rewards": getattr(processed_results, "step_rewards", []),
                 }
             else:
                 broadcast_data = None
             self.accelerator.wait_for_everyone()
-
             # Broadcast processed data
             broadcast_list = [broadcast_data]
             broadcast_object_list(broadcast_list, from_process=0)
             broadcast_data = broadcast_list[0]
             self.accelerator.wait_for_everyone()
+            import sys
+            self.logger.info(f"isatty={sys.stdin.isatty()}")
+            self.logger.info(f"rank={self.accelerator.process_index}, num={self.accelerator.num_processes}")
+            if self.accelerator.is_main_process:
+                import debugpy
+                self.logger.info("Breaking at breakpoint")
+                debugpy.breakpoint()
 
             # Each process takes its slice
             process_slice = slice(
                 self.accelerator.process_index * len(inputs),
                 (self.accelerator.process_index + 1) * len(inputs),
             )
-
-            # Create rewards tensor and compute advantages using full batch
+            # Create rewards tensor and compute advantages using outcome + optional process rewards
             assert (
                 broadcast_data is not None
             )  # After broadcast, all processes have data
-            all_rewards = torch.tensor(
-                broadcast_data["rewards"], device=self.accelerator.device
+            device = self.accelerator.device
+            all_rewards = torch.tensor(broadcast_data["rewards"], device=device)
+            # Outcome (trajectory) reward: normalize per group and broadcast across tokens
+            outcome_adv = self._compute_advantages(all_rewards)  # (B,)
+            outcome_adv_tokens = pad(
+                [
+                    torch.full(
+                        (len(cm),),
+                        outcome_adv[i],
+                        device=device,
+                        dtype=torch.float32,
+                    )
+                    for i, cm in enumerate(broadcast_data["completion_mask"])
+                ],
+                padding_value=0.0,
+                padding_side="right",
             )
-            all_advantages = self._compute_advantages(all_rewards)
+            # Process supervision: token-level advantages if step info exists
+            has_process = (
+                "step_rewards" in broadcast_data
+                and isinstance(broadcast_data["step_rewards"], list)
+                and any(len(x) > 0 for x in broadcast_data["step_rewards"])
+            )
+            # Build full-length per-sample advantages aligned with per_token_logps time axis:
+            # length = len(prompt_mask[i]) + len(completion_mask[i]) - 1
+            full_adv_list: list[torch.Tensor] = []
+            A_proc: Optional[torch.Tensor] = None
+            if has_process:
+                A_proc = self._compute_token_advantages(
+                    step_rewards=broadcast_data["step_rewards"],
+                    step_end_indices=broadcast_data["step_end_indices"],
+                    completion_masks=broadcast_data["completion_mask"],
+                )
+
+            w_outcome = getattr(self.args, "outcome_weight", 1.0)
+            for i in range(len(broadcast_data["completion_mask"])):
+                prompt_len_i = len(broadcast_data["prompt_mask"][i])
+                comp_len_i = len(broadcast_data["completion_mask"][i])
+                logits_keep_i = max(0, prompt_len_i + comp_len_i - 1)
+                # Take completion-region slices
+                out_i = outcome_adv_tokens[i][:comp_len_i]
+                if A_proc is not None:
+                    proc_i = A_proc[i][:comp_len_i]
+                else:
+                    proc_i = torch.zeros_like(out_i)
+                comp_adv_i = proc_i + w_outcome * out_i
+                # Fill into full-length vector with zeros for prompt positions
+                full_i = torch.zeros(
+                    logits_keep_i, device=device, dtype=torch.float32
+                )
+                if comp_len_i > 0:
+                    full_i[-comp_len_i:] = comp_adv_i
+                full_adv_list.append(full_i)
+            all_advantages = pad(full_adv_list, padding_value=0.0, padding_side="right")
 
             # Now create tensors only for this process's slice
             input_ids_list = []
@@ -1172,10 +1229,9 @@ class GRPOTrainer(Trainer):
         rewards: torch.Tensor,
     ) -> torch.Tensor:
         """Compute advantages from rewards with normalization using full batch statistics."""
-        # Always use full batch statistics
+        #Always use full batch statistics
         mean_grouped = rewards.view(-1, self.num_generations).mean(dim=1)
         std_grouped = rewards.view(-1, self.num_generations).std(dim=1)
-
         # Normalize the rewards to compute advantages
         mean_grouped = mean_grouped.repeat_interleave(self.num_generations, dim=0)
         std_grouped = std_grouped.repeat_interleave(self.num_generations, dim=0)
@@ -1185,6 +1241,72 @@ class GRPOTrainer(Trainer):
             advantages = advantages / (std_grouped + 1e-4)
 
         return advantages
+
+    def _compute_token_advantages(
+        self,
+        step_rewards: list[list[float]],
+        step_end_indices: list[list[int]],
+        completion_masks: list[list[int]],
+    ) -> torch.Tensor:
+        """
+        Build per-token advantages from per-step process rewards with forward credit:
+        each step k contributes its normalized reward r_tilde[k] to all tokens t >= end_k.
+        Normalization is done across the entire batch.
+        Returns a tensor shaped (B, T_max), right-padded with zeros.
+        """
+        device = self.accelerator.device
+        G = self.num_generations
+        B = len(step_rewards)
+        if B == 0:
+            return torch.zeros(0, device=device)
+        assert B % G == 0, "Batch size must be a multiple of num_generations"
+        N = B // G
+
+        # Collect all per-step rewards across the entire batch
+        all_vals = []
+        for i in range(B):
+            all_vals.extend(step_rewards[i])
+        
+        # Compute batch-wide statistics
+        if all_vals:
+            tvals_all = torch.tensor(all_vals, device=device, dtype=torch.float32)
+            mean = tvals_all.mean()
+            std = tvals_all.std()
+        else:
+            raise ValueError("No per-step rewards found")
+        
+        # Normalize all per-step rewards using batch-wide statistics
+        norm_step_rewards: list[list[float]] = [[] for _ in range(B)]
+        for i in range(B):
+            for r in step_rewards[i]:
+                r_tensor = torch.tensor(r, device=device, dtype=torch.float32)
+                rtilde = r_tensor - mean
+                if self.scale_rewards:
+                    rtilde = rtilde / (std + 1e-4)
+                norm_step_rewards[i].append(float(rtilde))
+
+        # Construct token-wise advantages by forward accumulation
+        adv_tensors: list[torch.Tensor] = []
+        for i in range(B):
+            T = len(completion_masks[i])
+            if T == 0:
+                adv_tensors.append(torch.zeros(0, device=device))
+                continue
+            diff = torch.zeros(T + 1, device=device, dtype=torch.float32)
+            ends = step_end_indices[i] if i < len(step_end_indices) else []
+            for rtilde, end_idx in zip(norm_step_rewards[i], ends):
+                e = int(end_idx)
+                if e < 0:
+                    e = 0
+                if e >= T:
+                    e = T - 1
+                # forward credit: add to all tokens t >= e
+                diff[e] += rtilde
+                diff[T] -= rtilde
+            adv = torch.cumsum(diff[:-1], dim=0)
+            adv_tensors.append(adv)
+
+        return pad(adv_tensors, padding_value=0.0, padding_side="right")
 
     def compute_loss(  # type: ignore
         self,  # type: ignore
@@ -1205,6 +1327,28 @@ class GRPOTrainer(Trainer):
         )
         # Compute the loss
         advantages = inputs["advantages"]
+        # Allow 1D (B,) or 2D (B, T) advantages
+        import os
+        if (
+            os.environ.get("RANK", "0") == "0"
+            and os.environ.get("LOCAL_RANK", "0") == "0"
+        ):
+            import debugpy
+            debugpy.breakpoint()
+        self.logger.info(f"0. advantages: {advantages}")
+
+        if advantages.dim() == 1:
+            advantages = advantages.unsqueeze(1)
+        # Align advantages length with logits_to_keep (may differ due to truncation)
+        target_T = per_token_logps.size(1)
+        if advantages.size(1) != target_T:
+            if advantages.size(1) > target_T:
+                # Keep the right-aligned window to match right-truncated inputs
+                advantages = advantages[:, -target_T:]
+            else:
+                # Left-pad with zeros to preserve alignment of completion tokens on the right
+                pad_len = target_T - advantages.size(1)
+                advantages = torch.nn.functional.pad(advantages, (pad_len, 0), value=0.0)
         # When using num_iterations == 1, old_per_token_logps == per_token_logps,
         # so we can skip it's computation (see _generate_and_score_completions) and use per_token_logps.detach() instead.
         old_per_token_logps = (
@@ -1214,17 +1358,18 @@ class GRPOTrainer(Trainer):
         )
         coef_1 = torch.exp(per_token_logps - old_per_token_logps)
         coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
-
+        
+        self.logger.info(f"1. advantages: {advantages}")
         if self.delta is not None:
             # Use clamp instead of min to handle tensor-float comparison
             per_token_loss1 = torch.clamp(
                 coef_1, max=self.delta
-            ) * advantages.unsqueeze(1)
+            ) * advantages
         else:
             # Original GRPO clipping (only lower bound implicitly applied by the final min)
-            per_token_loss1 = coef_1 * advantages.unsqueeze(1)
+            per_token_loss1 = coef_1 * advantages
 
-        per_token_loss2 = coef_2 * advantages.unsqueeze(1)
+        per_token_loss2 = coef_2 * advantages
         per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
 
         # Compute the KL divergence between the model and the reference model
@@ -1266,9 +1411,9 @@ class GRPOTrainer(Trainer):
             raise ValueError(f"Unknown loss type: {self.loss_type}")
 
         # Compute the clipped probability ratios
-        is_low_clipped = (coef_1 < 1 - self.epsilon_low) & (advantages.unsqueeze(1) < 0)
+        is_low_clipped = (coef_1 < 1 - self.epsilon_low) & (advantages < 0)
         is_high_clipped = (coef_1 > 1 + self.epsilon_high) & (
-            advantages.unsqueeze(1) > 0
+            advantages > 0
         )
         is_region_clipped = is_low_clipped | is_high_clipped
 

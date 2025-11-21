@@ -5,7 +5,21 @@ import argparse
 from datetime import datetime
 from verifiers.parsers.xml_parser import XMLParser
 from verifiers.utils.data_utils import load_example_dataset
+from sotopia.generation_utils.enums import MentalStateGeneration
+from sotopia.generation_utils.generate import get_system_prompt
 
+# Initialize debugpy for multi-process debugging (before accelerate initializes)
+if os.environ.get("DEBUGPY_ENABLE", "0") == "1":
+    import debugpy
+    port = int(os.environ.get("DEBUGPY_PORT", "5678"))
+    # Only initialize on the main process (rank 0) or before distributed init
+    rank = int(os.environ.get("RANK", "0"))
+    if rank == 0:
+        if not debugpy.is_client_connected():
+            print(f"[debugpy] Initializing debugpy on port {port} (rank {rank})", flush=True)
+            debugpy.listen(("0.0.0.0", port))
+            # Don't wait for client - let it attach when breakpoint is hit
+            # debugpy.wait_for_client()  # Uncomment if you want to wait at startup
 
 OUTPUT_DIR = "outputs"
 
@@ -70,7 +84,7 @@ def main(args):
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.pad_token_id = tokenizer.eos_token_id
 
-    system_prompt = MODIFIED_SOTOPIA_PROMPT
+    system_prompt = get_system_prompt(MentalStateGeneration.FIRST_ORDER_MENTAL_STATE)
     think_tag = "think"
     answer_tag = "response"
     prediction_tag = "prediction"
@@ -94,6 +108,7 @@ def main(args):
         eval_dataset=eval_dataset,
         reward_dimensions=["goal"],
         reasoning_dimensions=["goal"],
+        include_judge_reward=(not args.disable_judge_reward),
     )
     dataset = vf_env.get_dataset()
     rubric = vf_env.get_rubric()
@@ -125,7 +140,7 @@ def main(args):
     training_args.per_device_train_batch_size = args.per_device_train_batch_size
     training_args.gradient_accumulation_steps = args.gradient_accumulation_steps
     training_args.max_steps = args.max_steps
-    training_args.save_steps = 500
+    training_args.save_steps = 100
     training_args.seed = args.seed
     training_args.torch_empty_cache_steps = 5
     training_args.max_completion_length = 4096
@@ -191,6 +206,8 @@ if __name__ == "__main__":
                         help="Model to use for the environment agent (default: custom/qwen_base_model@http://localhost:8000/v1)")
     parser.add_argument("--max_turns", type=int, default=10,
                         help="Maximum number of turns in the environment")
+    parser.add_argument("--disable_judge_reward", action="store_true", default=False,
+                        help="Disable process (judge) reward; use only outcome-based rewards")
     # vLLM server parameters
     parser.add_argument("--vllm_server_host", type=str, default="0.0.0.0",
                         help="Host of the vLLM server to connect to (default: 0.0.0.0)")
