@@ -1073,9 +1073,7 @@ class GRPOTrainer(Trainer):
             broadcast_object_list(broadcast_list, from_process=0)
             broadcast_data = broadcast_list[0]
             self.accelerator.wait_for_everyone()
-            import sys
-            self.logger.info(f"isatty={sys.stdin.isatty()}")
-            self.logger.info(f"rank={self.accelerator.process_index}, num={self.accelerator.num_processes}")
+
             if self.accelerator.is_main_process:
                 import debugpy
                 self.logger.info("Breaking at breakpoint")
@@ -1204,11 +1202,31 @@ class GRPOTrainer(Trainer):
                     all_prompt_mask=broadcast_data["prompt_mask"],
                 )
 
+            # Compute the per-token log probabilities for the model
+            # We do this here to ensure we have the logps of the model that generated the data
+            # This is needed for the KL divergence and the ratio clipping
+            with torch.no_grad():
+                was_training = self.model.training
+                self.model.eval()
+                
+                completion_mask = attention_mask[:, 1:]
+                logits_to_keep = completion_mask.size(1)
+                old_per_token_logps = self._get_per_token_logps(
+                    self.model, 
+                    input_ids, 
+                    attention_mask, 
+                    logits_to_keep,
+                    batch_size=self.per_device_train_batch_size
+                )
+                
+                if was_training:
+                    self.model.train()
+
             # Concatenate all data for shuffling
             full_batch = {
                 "input_ids": input_ids,
                 "attention_mask": attention_mask,
-                "old_per_token_logps": None,
+                "old_per_token_logps": old_per_token_logps,
                 "advantages": advantages,
             }
 
@@ -1335,7 +1353,6 @@ class GRPOTrainer(Trainer):
         ):
             import debugpy
             debugpy.breakpoint()
-        self.logger.info(f"0. advantages: {advantages}")
 
         if advantages.dim() == 1:
             advantages = advantages.unsqueeze(1)
@@ -1359,7 +1376,6 @@ class GRPOTrainer(Trainer):
         coef_1 = torch.exp(per_token_logps - old_per_token_logps)
         coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
         
-        self.logger.info(f"1. advantages: {advantages}")
         if self.delta is not None:
             # Use clamp instead of min to handle tensor-float comparison
             per_token_loss1 = torch.clamp(

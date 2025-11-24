@@ -168,12 +168,22 @@ def main(args):
         print(f"Attempting to load checkpoint from {args.resume_from_checkpoint}")
         training_args.resume_from_checkpoint = args.resume_from_checkpoint
 
+    # Configure LoRA if enabled
+    peft_config = None
+    if args.use_lora:
+        print(f"Using LoRA with r={args.lora_r}, alpha={args.lora_alpha}")
+        peft_config = vf.lora_defaults(r=args.lora_r, alpha=args.lora_alpha) #type: ignore
+
     trainer = vf.GRPOTrainer( #type: ignore
         model=model,
         processing_class=tokenizer,
         env=vf_env,
         args=training_args,
+        peft_config=peft_config,
     )
+
+    if hasattr(trainer.model, "print_trainable_parameters"):
+        trainer.model.print_trainable_parameters()
 
     trainer.train(resume_from_checkpoint=True if args.resume_from_checkpoint else False)
 
@@ -217,6 +227,13 @@ if __name__ == "__main__":
                         help="Number of iterations for the trainer")
     parser.add_argument("--served_model_name", type=str, default=None,
                         help="Served model alias exposed by vLLM; if set, overrides model id used in API calls.")
+    
+    parser.add_argument("--use_lora", action="store_true", default=False,
+                        help="Whether to use LoRA for training")
+    parser.add_argument("--lora_r", type=int, default=8,
+                        help="LoRA r value")
+    parser.add_argument("--lora_alpha", type=int, default=16,
+                        help="LoRA alpha value")
     
     args = parser.parse_args()
     main(args) 

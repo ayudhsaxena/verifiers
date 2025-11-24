@@ -7,14 +7,14 @@ from verifiers.parsers.xml_parser import XMLParser
 from verifiers.rubrics.judge_rubric import JudgeRubric
 
 
-SOTOPIA_JUDGE_PROMPT = """The participant is engaging in a social interaction scenario and as part of their turn, they are trying to predict the other participant's thought process. We have the ground truth of the other participant's thoughts and the participant's prediction of the other participant's thoughts. Determine if the participant's prediction of the other participant's thoughts is correct.
+SOTOPIA_JUDGE_PROMPT = """The participant is engaging in a social interaction scenario and as part of their turn, they are trying to predict the other participant's mental state. The mental state of a person is essentially what they believe, feel, want, desire, need, know etc. We have the ground truth of the other participant's mental state and the participant's prediction of the other participant's mental state. Determine if the participant's prediction of the other participant's mental state is correct.
 
-Other participant's thoughts:
+Other participant's mental state:
 ```
 {thoughts}
 ```
 
-Participant's Prediction of Other Participant's Thoughts:
+Participant's Prediction of Other Participant's mental state:
 ```
 {prediction}
 ```
@@ -23,6 +23,9 @@ Respond either "yes" or "no" only within the <answer></answer> tags. Then give a
 Respond in the following format:
 <answer>..</answer>
 <reason>..</reason>
+
+NOTE: IF YOU FIND ANY KIND OF GIBBERISH IN THE TEXT LIKE REPEATED WORDS, NON-ENGLISH, NONSENSICAL PHRASES, JUST SIMPLY ASSIGN A SCORE OF 0.
+                        
 """
 
 
@@ -79,7 +82,7 @@ class ModifiedSotopiaRubric(JudgeRubric):
         in ``state["reward_sum"]``.
         """
         try:
-            reward_sum = float(state.get("reward_sum", 0.0))/10.0
+            reward_sum = float(state.get("reward_sum", 0.0))
             self.logger.info(f"Reward sum: {reward_sum}")
             if reward_sum <= 0.7:
                 return 0.0

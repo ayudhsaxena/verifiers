@@ -29,6 +29,7 @@ class TextArenaEnv(MultiTurnEnv):
     def __init__(self,
                  system_prompt: Optional[str] = None,
                  few_shot: Optional[List[Dict[str, str]]] = None,
+                 sampling_args: SamplingArgs = {},
                  max_steps: int = 5,
                  env_id: str = "TruthAndDeception-v0", 
                  xml_parser: XMLParser = XMLParser(fields=["reasoning", "response"]),
@@ -38,6 +39,7 @@ class TextArenaEnv(MultiTurnEnv):
             system_prompt=system_prompt,
             few_shot=few_shot,
             sampling_args=sampling_args,
+            max_turns=max_steps,
             **kwargs
         )
         self.train_player_id = train_player_id

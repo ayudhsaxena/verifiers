@@ -214,7 +214,7 @@ class SotopiaEnv(MultiTurnEnv):
 
         train_obs = state["environment_messages"][train_name]
         train_agent = state["train_agent"]
-        prompt_content = train_agent.build_action_prompt(train_obs, use_prediction=True)
+        prompt_content = train_agent.build_action_prompt(train_obs)
 
         train_prompt = []
         if self.system_prompt:
