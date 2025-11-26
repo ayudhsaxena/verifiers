@@ -30,6 +30,7 @@ wandb/
 outputs/
 logs/
 episode_outputs/
+gibberish_logs/
 
 # development
 local/
